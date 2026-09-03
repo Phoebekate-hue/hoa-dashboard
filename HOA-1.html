@@ -1188,7 +1188,7 @@ const ADMIN = {
     const inner = {
       requests(){
         return sectionCard('Maintenance queue', '<ul class="list">' + store.requests.map(r =>
-          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+newMsgTag(r)+'</div>' +
           '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span class="tag '+(r.priority==='High'?'t-rose':'t-grey')+'">'+esc(r.priority)+'</span>' +
           '<span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
           '<div class="body">'+esc(r.detail)+'</div>' +
@@ -1299,7 +1299,7 @@ const ADMIN = {
       },
       complaints(){
         return sectionCard('Complaints and violations', '<ul class="list">' + store.complaints.map(c =>
-          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+'</div>' +
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+newMsgTag(c)+'</div>' +
           '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>' +
           '<span>From '+esc(c.unit)+'</span>·<span>Against '+esc(c.against)+'</span>·<span>'+ago(c.filedAt)+'</span></div>' +
           '<div class="body">'+esc(c.detail)+'</div>' +
@@ -1313,7 +1313,7 @@ const ADMIN = {
       },
       concerns(){
         return sectionCard('Concerns from homeowners', store.concerns.length ? '<ul class="list">' + store.concerns.map(n =>
-          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newMsgTag(n)+'</div>' +
           '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
           '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
           '<div class="btn-row" style="margin-top:11px">' +
@@ -1553,6 +1553,7 @@ function staffAvailabilityLine(){
     : '<span class="tag t-grey">● No staff online right now</span> <span class="meta">Usually replies within a few hours.</span>';
 }
 function newReplyTag(item){ return item.residentUnread ? ' <span class="newpill">New reply</span>' : ''; }
+function newMsgTag(item){ return item.staffUnread ? ' <span class="newpill">New message</span>' : ''; }
 function handledByTag(item){
   return item.handledBy ? '<span class="tag t-slate">→ '+esc(item.handledBy.name)+'</span>' : '<span class="tag t-grey">Unassigned</span>';
 }
@@ -1571,6 +1572,7 @@ function openChat(kind, id){
   chatCtx = { kind, id };
   const item = findMsgItem(kind, id);
   if(!isStaffSide() && item.residentUnread){ item.residentUnread = false; render(); }
+  if(isStaffSide() && item.staffUnread){ item.staffUnread = false; render(); }
   closeModal(); modalOpen = true;
   $('#modalHost').innerHTML = chatModalHTML();
   const scrim = $('#mScrim');
@@ -1608,7 +1610,7 @@ function sendChatMessage(){
   (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:val });
   if(staffSide && !item.handledBy) item.handledBy = { name:store.session.name, role:roleLabel };
   else if(!staffSide) autoAssign(item);
-  if(staffSide) item.residentUnread = true; else item.residentUnread = false;
+  if(staffSide){ item.residentUnread = true; } else { item.residentUnread = false; item.staffUnread = true; }
   commit(
     staffSide ? roleLabel+' replied to unit '+item.unit+' on "'+subj+'".' : 'Unit '+myUnit()+' messaged the Board and Admin about "'+subj+'".',
     staffSide
@@ -1668,7 +1670,7 @@ function quickMessageAdmin(){
       const subject = t.length > 60 ? t.slice(0,57)+'…' : t;
       const id = uid();
       const item = { id, unit:myUnit(), by:store.session.name, topic:'Question', subject,
-        message:t, status:'Open', at:new Date(), replies:[] };
+        message:t, status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.concerns.unshift(item);
       commit('Unit '+myUnit()+' messaged Admin/Staff — "'+subject+'".',{title:'Message sent',audience:['admin']});
@@ -1681,7 +1683,7 @@ function messagesInboxView(){
   const inner = {
     concerns(){
       return sectionCard('Concerns from homeowners', store.concerns.length ? '<ul class="list">' + store.concerns.map(n =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newMsgTag(n)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span>'+handledByTag(n)+'<span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
         '<div class="btn-row" style="margin-top:11px">' +
@@ -1692,7 +1694,7 @@ function messagesInboxView(){
     },
     complaints(){
       return sectionCard('Complaints and violations', store.complaints.length ? '<ul class="list">' + store.complaints.map(c =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+newMsgTag(c)+'</div>' +
         '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>'+handledByTag(c)+
         '<span class="mono">'+esc(c.unit)+'</span>·<span>'+esc(c.by)+'</span>·<span>Against '+esc(c.against)+'</span>·<span>'+ago(c.filedAt)+'</span></div>' +
         '<div class="body">'+esc(c.detail)+'</div>' +
@@ -1704,7 +1706,7 @@ function messagesInboxView(){
     },
     requests(){
       return sectionCard('Maintenance requests', store.requests.length ? '<ul class="list">' + store.requests.map(r =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+newMsgTag(r)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span>'+handledByTag(r)+'<span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
         '<div class="body">'+esc(r.detail)+'</div>' +
         (r.assignee ? '<div class="meta">Assigned to '+esc(r.assignee)+'</div>' : '') +
@@ -1715,7 +1717,7 @@ function messagesInboxView(){
     },
     tickets(){
       return sectionCard('Support tickets', store.tickets.length ? '<ul class="list">' + store.tickets.map(x =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+newMsgTag(x)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span>'+handledByTag(x)+'<span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·<span>'+ago(x.at)+'</span></div>' +
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
         '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'ticket\',\''+x.id+'\')">Reply</button>' +
@@ -1738,7 +1740,7 @@ function supportView(admin){
   const inner = {
     tickets(){
       return sectionCard(admin?'Support tickets':'My tickets', mine.length ? '<ul class="list">' + mine.map(x =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+(admin?'':newReplyTag(x))+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+(admin?newMsgTag(x):newReplyTag(x))+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="tag '+(x.priority==='High'?'t-rose':'t-grey')+'">'+esc(x.priority)+'</span>' +
         (admin?'<span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·':'')+'<span>'+ago(x.at)+'</span></div>' +
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
@@ -1855,7 +1857,7 @@ const HOME = {
           '</div></div></li>';
         }).join('') + '</ul></div>' +
       sectionCard('My requests', mine.length ? '<ul class="list">' + mine.slice(0,3).map(r =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div><div class="meta">'+ago(r.at)+'</div></div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+newReplyTag(r)+'</div><div class="meta">'+ago(r.at)+'</div></div>' +
         '<span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing filed','Report an issue and the board picks it up.'),
         '<button class="btn btn-ghost btn-sm" onclick="go(\'myrequests\')">See all</button>') +
@@ -2414,7 +2416,7 @@ function requestForm(){
       const title=$('#f_title').value.trim();
       if(!title){ toast('info','Add a title','Give the office something to search for.'); return false; }
       const item = { id:uid(), unit:myUnit(), by:store.session.name, type:$('#f_type').value, title,
-        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[] };
+        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.requests.unshift(item);
       commit('Request filed by unit '+myUnit()+' — “'+title+'”.',{title:'Request submitted'}); return true; });
@@ -2718,7 +2720,7 @@ function complaintForm(){
       const ref = 'CMP-'+new Date().toISOString().slice(2,4)+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(store.complaints.length+1).padStart(2,'0');
       const item = { id:uid(), unit:myUnit(), by:store.session.name, against:$('#f_ag').value.trim()||'Not specified',
         category:$('#f_cat').value, title, detail:$('#f_detail').value.trim()||'No further details.',
-        status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[] };
+        status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[], staffUnread:true };
       autoAssign(item);
       store.complaints.unshift(item);
       commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed',audience:['admin','board']}); return true; });
@@ -2732,7 +2734,7 @@ function concernForm(){
       const sub=$('#f_sub').value.trim();
       if(!sub){ toast('info','Add a subject','Give the thread a title.'); return false; }
       const item = { id:uid(), unit:myUnit(), by:store.session.name, topic:$('#f_top').value, subject:sub,
-        message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[] };
+        message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.concerns.unshift(item);
       commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent',audience:['admin','board']}); return true; });
@@ -2848,7 +2850,7 @@ function ticketForm(){
     'Send ticket', () => {
       const s=$('#f_s').value.trim(); if(!s){ toast('info','Add a subject','Support needs a one-line summary.'); return false; }
       const item = { id:uid(), unit:myUnit(), by:store.session.name, subject:s, channel:'Portal',
-        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[] };
+        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[], staffUnread:true };
       autoAssign(item);
       store.tickets.unshift(item);
       commit('Support ticket opened by unit '+myUnit()+' — '+s+'.',{title:'Ticket sent'}); return true; });
