@@ -481,11 +481,11 @@ const store = {
   ],
   requests:[
     { id:'r1', unit:'A-04', by:'Marco Villanueva', type:'Streetlight', title:'Streetlight out near A-04',
-      detail:'The post between A-04 and A-06 has been dark for four nights.', priority:'Normal', assignee:'Dante (electrician)', status:'In progress', at:new Date(Date.now()-864e5*1) },
+      detail:'The post between A-04 and A-06 has been dark for four nights.', priority:'Normal', assignee:'Dante (electrician)', status:'In progress', at:new Date(Date.now()-864e5*1), replies:[] },
     { id:'r2', unit:'C-21', by:'Jonna Reyes', type:'Drainage', title:'Canal backs up when it rains',
-      detail:'Water pools at the corner of Solana Drive and Acacia for about an hour after heavy rain.', priority:'High', assignee:'', status:'Open', at:new Date(Date.now()-864e5*3) },
+      detail:'Water pools at the corner of Solana Drive and Acacia for about an hour after heavy rain.', priority:'High', assignee:'', status:'Open', at:new Date(Date.now()-864e5*3), replies:[] },
     { id:'r3', unit:'B-12', by:'Rina Dela Cruz', type:'Landscaping', title:'Overgrown acacia branch',
-      detail:'A branch is leaning on the service wires at the back fence.', priority:'Normal', assignee:'Grounds crew', status:'Resolved', at:new Date(Date.now()-864e5*11) }
+      detail:'A branch is leaning on the service wires at the back fence.', priority:'Normal', assignee:'Grounds crew', status:'Resolved', at:new Date(Date.now()-864e5*11), replies:[] }
   ],
   dues:[
     { id:'d1', unit:'A-04', owner:'Marco Villanueva', period:'August 2026', amount:1850, status:'Paid', method:'GCash', paidAt:new Date(Date.now()-864e5*5) },
@@ -558,11 +558,11 @@ const store = {
   complaints:[
     { id:'c1', unit:'B-12', by:'Rina Dela Cruz', against:'Unit C-19', category:'Noise', title:'Videoke past quiet hours',
       detail:'Loud singing until around 1 AM on three weeknights this month. We have small children in the house.',
-      status:'Under review', ref:'CMP-2608-01', filedAt:new Date(Date.now()-864e5*4), resolution:'' },
+      status:'Under review', ref:'CMP-2608-01', filedAt:new Date(Date.now()-864e5*4), resolution:'', replies:[] },
     { id:'c2', unit:'D-07', by:'Ferdie Lim', against:'Unit D-09', category:'Parking', title:'Vehicle blocking the shared driveway',
       detail:'A van has been parked across the driveway entrance on weekends.',
       status:'Resolved', ref:'CMP-2607-04', filedAt:new Date(Date.now()-864e5*19),
-      resolution:'Owner was given a written reminder. Van has been moved to the visitor bay.' }
+      resolution:'Owner was given a written reminder. Van has been moved to the visitor bay.', replies:[] }
   ],
   concerns:[
     { id:'n1', unit:'A-04', by:'Marco Villanueva', topic:'Suggestion', subject:'Add a covered waiting shed at the gate',
@@ -597,9 +597,9 @@ const store = {
   /* support */
   tickets:[
     { id:'t1', unit:'C-21', by:'Jonna Reyes', subject:'Cannot log in with Facebook', channel:'Portal', priority:'Normal',
-      status:'Open', at:new Date(Date.now()-864e5*2), detail:'The Facebook button spins and returns to the sign-in page.' },
+      status:'Open', at:new Date(Date.now()-864e5*2), detail:'The Facebook button spins and returns to the sign-in page.', replies:[] },
     { id:'t2', unit:'D-07', by:'Ferdie Lim', subject:'Payment posted twice for July', channel:'Email', priority:'High',
-      status:'Resolved', at:new Date(Date.now()-864e5*12), detail:'GCash was charged twice on July 3. Refund confirmed on July 8.' }
+      status:'Resolved', at:new Date(Date.now()-864e5*12), detail:'GCash was charged twice on July 3. Refund confirmed on July 8.', replies:[] }
   ],
   faqs:[
     { q:'How do I pay my dues?', a:'Open My dues, tap Pay, then pick GCash, Maya, bank transfer or card. A receipt posts to your ledger straight away.' },
@@ -684,7 +684,8 @@ function toggleTheme(){
 }
 
 /* ---- notifications ---- */
-function myNotifs(){ return store.notifs.filter(n => n.audience==='all' || n.audience===store.session.role); }
+function myNotifs(){ return store.notifs.filter(n => n.audience==='all' ||
+  (Array.isArray(n.audience) ? n.audience.includes(store.session.role) : n.audience===store.session.role)); }
 function unreadCount(){ return myNotifs().filter(n=>!n.read).length; }
 let notifOpen = false;
 function toggleNotifs(e){
@@ -791,6 +792,7 @@ const NAV = {
       { id:'homeowners', label:'Homeowners',              icon:'users', badge:()=>store.accounts.filter(a=>a.status==='Invited').length },
       { id:'property',   label:'Property & Financials',   icon:'building' },
       { id:'operations', label:'Operations & Maintenance',icon:'wrench', badge:()=>store.requests.filter(r=>r.status!=='Resolved').length },
+      { id:'calendar',   label:'Calendar',                icon:'calendar' },
       { id:'security',   label:'Security & Access',       icon:'shield', badge:()=>store.passes.filter(p=>p.status==='Pending').length },
       { id:'governance', label:'Governance & Community',  icon:'megaphone', badge:()=>store.complaints.filter(c=>c.status!=='Resolved').length },
       { id:'collections',label:'Collections',             icon:'peso', badge:()=>store.dues.filter(d=>d.status!=='Paid').length },
@@ -828,6 +830,10 @@ const NAV = {
   board:[
     { g:'Governance', items:[
       { id:'oversight', label:'Oversight',        icon:'grid' },
+      { id:'messages',  label:'Messages',         icon:'chat', badge:()=>
+          store.concerns.filter(c=>c.status!=='Closed').length + store.complaints.filter(c=>c.status!=='Resolved').length +
+          store.requests.filter(r=>r.status!=='Resolved').length + store.tickets.filter(t=>t.status!=='Resolved').length },
+      { id:'calendar',  label:'Calendar',         icon:'calendar' },
       { id:'financials',label:'Approved summaries',icon:'peso' },
       { id:'documents', label:'Board documents',  icon:'building' },
       { id:'election',  label:'Election',         icon:'ballot' },
@@ -1122,10 +1128,12 @@ const ADMIN = {
           '<span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
           '<div class="body">'+esc(r.detail)+'</div>' +
           (r.assignee ? '<div class="meta">Assigned to '+esc(r.assignee)+'</div>' : '') +
+          threadHTML(r) +
           '<div class="btn-row" style="margin-top:11px">' +
             ['Open','In progress','Resolved'].map(s => s===r.status ? '' :
               '<button class="btn btn-ghost btn-sm" onclick="setReq(\''+r.id+'\',\''+s+'\')">Mark '+s.toLowerCase()+'</button>').join('') +
             '<button class="btn btn-ghost btn-sm" onclick="assignForm(\''+r.id+'\')">Assign</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'request\',\''+r.id+'\')">Reply</button>' +
           '</div></div><span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul>');
       },
       bookings(){ return sectionCard('Facility bookings', bookingTable(store.bookings, true)); },
@@ -1147,6 +1155,12 @@ const ADMIN = {
         {id:'requests',label:'Requests',n:store.requests.filter(r=>r.status!=='Resolved').length},
         {id:'bookings',label:'Bookings',n:store.bookings.filter(b=>b.status==='Pending').length},
         {id:'schedule',label:'Preventive schedule'}],'requests') + inner;
+  },
+
+  /* ---------- CALENDAR ---------- */
+  calendar(){
+    return head('Calendar','Community events and every facility booking at a glance — tap a date to see what is on and what is still free.') +
+      calendarCard();
   },
 
   /* ---------- SECURITY ---------- */
@@ -1222,9 +1236,11 @@ const ADMIN = {
           '<span>From '+esc(c.unit)+'</span>·<span>Against '+esc(c.against)+'</span>·<span>'+ago(c.filedAt)+'</span></div>' +
           '<div class="body">'+esc(c.detail)+'</div>' +
           (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0"><strong style="font-size:13px">Resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
-          (c.status!=='Resolved' ? '<div class="btn-row" style="margin-top:11px">' +
-            '<button class="btn btn-emerald btn-sm" onclick="resolveComplaint(\''+c.id+'\')">Record resolution</button>' +
-            '<button class="btn btn-ghost btn-sm" onclick="setComplaint(\''+c.id+'\',\'Escalated\')">Escalate to board</button></div>' : '') +
+          threadHTML(c) +
+          '<div class="btn-row" style="margin-top:11px">' +
+            (c.status!=='Resolved' ? '<button class="btn btn-emerald btn-sm" onclick="resolveComplaint(\''+c.id+'\')">Record resolution</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="setComplaint(\''+c.id+'\',\'Escalated\')">Escalate to board</button>' : '') +
+            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'complaint\',\''+c.id+'\')">Reply</button></div>' +
           '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>');
       },
       concerns(){
@@ -1233,7 +1249,7 @@ const ADMIN = {
           '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
           '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
           '<div class="btn-row" style="margin-top:11px">' +
-            '<button class="btn btn-ghost btn-sm" onclick="replyConcern(\''+n.id+'\')">Reply</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'concern\',\''+n.id+'\')">Reply</button>' +
             (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" onclick="closeConcern(\''+n.id+'\')">Close thread</button>' : '') +
           '</div></div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
           : empty('No concerns raised','Homeowner suggestions and questions land here.'));
@@ -1429,10 +1445,47 @@ function tallyBlock(compact){
   }).join('');
 }
 function threadHTML(n){
-  if(!n.replies.length) return '';
+  if(!n.replies || !n.replies.length) return '';
   return '<div style="margin-top:11px;border-left:2px solid var(--line);padding-left:12px">' + n.replies.map(r =>
     '<div style="margin-bottom:9px"><div class="meta" style="margin:0"><strong style="color:var(--ink)">'+esc(r.by)+'</strong> · '+esc(r.role)+' · '+ago(r.at)+'</div>' +
     '<div class="body" style="margin-top:3px">'+esc(r.text)+'</div></div>').join('') + '</div>';
+}
+
+/* ---- messaging: a resident can message the Board + Admin directly from any log entry ---- */
+const MSG_KINDS = {
+  request:  { store:'requests',   subj:x=>x.title,   label:'request'   },
+  complaint:{ store:'complaints', subj:x=>x.title,   label:'complaint' },
+  ticket:   { store:'tickets',    subj:x=>x.subject, label:'ticket'    },
+  concern:  { store:'concerns',   subj:x=>x.subject, label:'concern'   }
+};
+function findMsgItem(kind, id){ return store[MSG_KINDS[kind].store].find(x=>x.id===id); }
+
+/* resident -> Board + Admin */
+function messageForm(kind, id){
+  const item = findMsgItem(kind, id);
+  modal('Message the Board & Admin','This goes straight to the admin office and the Board — expect a reply in this thread.',
+    '<label class="fld"><span>Your message</span><textarea class="input" id="f_msg" placeholder="Add detail, a question, or a follow-up on this '+MSG_KINDS[kind].label+'…"></textarea></label>',
+    'Send message', () => {
+      const t = $('#f_msg').value.trim(); if(!t) return false;
+      (item.replies = item.replies || []).push({ by:store.session.name, role:'Unit '+myUnit(), at:new Date(), text:t });
+      commit('Unit '+myUnit()+' messaged the Board and Admin about "'+MSG_KINDS[kind].subj(item)+'".',
+        { title:'Message sent', audience:['admin','board'] });
+      return true;
+    });
+}
+/* admin or board -> resident, in the same thread */
+function replyToItem(kind, id){
+  const item = findMsgItem(kind, id);
+  const roleLabel = ROLE_LABEL(store.session.role);
+  modal('Reply to '+item.by,'Your reply appears in their thread straight away.',
+    '<label class="fld"><span>Reply</span><textarea class="input" id="f_r"></textarea></label>',
+    'Post reply', () => {
+      const t = $('#f_r').value.trim(); if(!t) return false;
+      (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:t });
+      commit(roleLabel+' replied to unit '+item.unit+' on "'+MSG_KINDS[kind].subj(item)+'".',
+        { title:'Reply posted', audience:['admin','board'] });
+      return true;
+    });
 }
 
 /* shared support + account settings, used by both roles */
@@ -1445,8 +1498,12 @@ function supportView(admin){
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="tag '+(x.priority==='High'?'t-rose':'t-grey')+'">'+esc(x.priority)+'</span>' +
         (admin?'<span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·':'')+'<span>'+ago(x.at)+'</span></div>' +
-        '<div class="body">'+esc(x.detail)+'</div>' +
-        (admin && x.status!=='Resolved' ? '<button class="btn btn-emerald btn-sm" style="margin-top:10px" onclick="resolveTicket(\''+x.id+'\')">Mark resolved</button>' : '') +
+        '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
+        '<div class="btn-row" style="margin-top:10px">' +
+          (admin && x.status!=='Resolved' ? '<button class="btn btn-emerald btn-sm" onclick="resolveTicket(\''+x.id+'\')">Mark resolved</button>' : '') +
+          (admin ? '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'ticket\',\''+x.id+'\')">Reply</button>'
+                 : '<button class="btn btn-ghost btn-sm" onclick="messageForm(\'ticket\',\''+x.id+'\')">Message Board &amp; Admin</button>') +
+        '</div>' +
         '</div><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No tickets','Nothing has been raised with portal support.'),
         admin ? '' : '<button class="btn btn-primary btn-sm" style="width:auto" onclick="ticketForm()">New ticket</button>');
@@ -1583,7 +1640,9 @@ const HOME = {
       '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
       '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span>Filed '+ago(r.at)+'</span>' +
       (r.assignee?'<span>Assigned to '+esc(r.assignee)+'</span>':'')+'</div>' +
-      '<div class="body">'+esc(r.detail)+'</div></div>' +
+      '<div class="body">'+esc(r.detail)+'</div>' + threadHTML(r) +
+      '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'request\',\''+r.id+'\')">Message Board &amp; Admin</button>' +
+      '</div>' +
       '<span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul></div>'
       : '<div class="card">'+empty('No requests yet','Report a streetlight, a clogged canal or a common area repair.')+'</div>');
   },
@@ -1626,6 +1685,8 @@ const HOME = {
         '<div class="body">'+esc(c.detail)+'</div>' +
         (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0">' +
           '<strong style="font-size:13px">Board resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
+        threadHTML(c) +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'complaint\',\''+c.id+'\')">Message Board &amp; Admin</button>' +
         '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing filed','Use a complaint for rule violations. For suggestions or questions, use Concerns instead.')) + '</div>' +
       sectionCard('House rules you can cite','<ul class="list">' + store.rules.map(r =>
@@ -1684,7 +1745,7 @@ const HOME = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="addToThread(\''+n.id+'\')">Add a note</button>' : '') +
+        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No concerns raised','Ask about a facility, suggest an improvement, or send feedback on a board decision.')) + '</div>' +
       sectionCard('What others have raised','<ul class="list">' + store.concerns.filter(c=>c.unit!==myUnit()).map(n =>
@@ -1809,7 +1870,7 @@ const RENTER = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="addToThread(\''+n.id+'\')">Add a note</button>' : '') +
+        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing raised','Ask about an amenity or send the board feedback.'));
   },
@@ -1904,6 +1965,69 @@ const BOARD = {
         '<li><div class="ttl">'+esc(a.title)+'</div><div class="meta">'+esc(a.category)+' · '+fmtDate(a.date)+'</div></li>').join('') + '</ul>') +
     '</div>';
   },
+
+  /* ---------- MESSAGES ---------- */
+  messages(){
+    const t = tabOf('bmsg','concerns');
+    const inner = {
+      concerns(){
+        return sectionCard('Concerns from homeowners', store.concerns.length ? '<ul class="list">' + store.concerns.map(n =>
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
+          '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
+          '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
+          '<div class="btn-row" style="margin-top:11px">' +
+            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'concern\',\''+n.id+'\')">Reply</button>' +
+            (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" onclick="closeConcern(\''+n.id+'\')">Close thread</button>' : '') +
+          '</div></div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
+          : empty('No concerns raised','Homeowner suggestions and questions land here.'));
+      },
+      complaints(){
+        return sectionCard('Complaints and violations', store.complaints.length ? '<ul class="list">' + store.complaints.map(c =>
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+'</div>' +
+          '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>' +
+          '<span class="mono">'+esc(c.unit)+'</span>·<span>'+esc(c.by)+'</span>·<span>Against '+esc(c.against)+'</span>·<span>'+ago(c.filedAt)+'</span></div>' +
+          '<div class="body">'+esc(c.detail)+'</div>' +
+          (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0"><strong style="font-size:13px">Resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
+          threadHTML(c) +
+          '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'complaint\',\''+c.id+'\')">Reply</button>' +
+          '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>'
+          : empty('No complaints filed','Household complaints and violations land here.'));
+      },
+      requests(){
+        return sectionCard('Maintenance requests', store.requests.length ? '<ul class="list">' + store.requests.map(r =>
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
+          '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
+          '<div class="body">'+esc(r.detail)+'</div>' +
+          (r.assignee ? '<div class="meta">Assigned to '+esc(r.assignee)+'</div>' : '') +
+          threadHTML(r) +
+          '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'request\',\''+r.id+'\')">Reply</button>' +
+          '</div><span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul>'
+          : empty('No requests filed','Maintenance requests from homeowners land here.'));
+      },
+      tickets(){
+        return sectionCard('Support tickets', store.tickets.length ? '<ul class="list">' + store.tickets.map(x =>
+          '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
+          '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·<span>'+ago(x.at)+'</span></div>' +
+          '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
+          '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'ticket\',\''+x.id+'\')">Reply</button>' +
+          '</div><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></div></li>').join('') + '</ul>'
+          : empty('No tickets raised','Portal support tickets land here.'));
+      }
+    }[t]();
+    return head('Messages from residents','Every concern, complaint, maintenance request and support ticket that residents send to the Board and admin office — reply directly from here.') +
+      tabs('bmsg',[
+        {id:'concerns',label:'Concerns',n:store.concerns.filter(c=>c.status!=='Closed').length},
+        {id:'complaints',label:'Complaints',n:store.complaints.filter(c=>c.status!=='Resolved').length},
+        {id:'requests',label:'Requests',n:store.requests.filter(r=>r.status!=='Resolved').length},
+        {id:'tickets',label:'Tickets',n:store.tickets.filter(x=>x.status!=='Resolved').length}],'concerns') + inner;
+  },
+
+  /* ---------- CALENDAR ---------- */
+  calendar(){
+    return head('Calendar','Community events and every facility booking at a glance — tap a date to see what is on and what is still free.') +
+      calendarCard();
+  },
+
   financials(){
     const net = store.ledger.opening + collected() - totalExpense();
     return head('Approved summaries','Aggregate figures for governance. The per-household ledger is not part of the Board view.') +
@@ -2100,7 +2224,7 @@ function requestForm(){
       const title=$('#f_title').value.trim();
       if(!title){ toast('info','Add a title','Give the office something to search for.'); return false; }
       store.requests.unshift({ id:uid(), unit:myUnit(), by:store.session.name, type:$('#f_type').value, title,
-        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date() });
+        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[] });
       commit('Request filed by unit '+myUnit()+' — “'+title+'”.',{title:'Request submitted'}); return true; });
 }
 
@@ -2402,8 +2526,8 @@ function complaintForm(){
       const ref = 'CMP-'+new Date().toISOString().slice(2,4)+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(store.complaints.length+1).padStart(2,'0');
       store.complaints.unshift({ id:uid(), unit:myUnit(), by:store.session.name, against:$('#f_ag').value.trim()||'Not specified',
         category:$('#f_cat').value, title, detail:$('#f_detail').value.trim()||'No further details.',
-        status:'Under review', ref, filedAt:new Date(), resolution:'' });
-      commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed'}); return true; });
+        status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[] });
+      commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed',audience:['admin','board']}); return true; });
 }
 function concernForm(){
   modal('Raise a concern','This starts a thread with the board. Expect a reply, not a ruling.',
@@ -2415,25 +2539,7 @@ function concernForm(){
       if(!sub){ toast('info','Add a subject','Give the thread a title.'); return false; }
       store.concerns.unshift({ id:uid(), unit:myUnit(), by:store.session.name, topic:$('#f_top').value, subject:sub,
         message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[] });
-      commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent'}); return true; });
-}
-function replyConcern(id){
-  const n = store.concerns.find(x=>x.id===id);
-  modal('Reply to '+n.by,'Your reply appears in their thread straight away.',
-    '<label class="fld"><span>Reply</span><textarea class="input" id="f_r"></textarea></label>',
-    'Post reply', () => {
-      const t=$('#f_r').value.trim(); if(!t) return false;
-      n.replies.push({ by:store.session.name, role:'HOA Admin', at:new Date(), text:t });
-      commit('Board replied to unit '+n.unit+' on “'+n.subject+'”.',{title:'Reply posted'}); return true; });
-}
-function addToThread(id){
-  const n = store.concerns.find(x=>x.id===id);
-  modal('Add a note','Keeps the thread in one place for the board.',
-    '<label class="fld"><span>Note</span><textarea class="input" id="f_r"></textarea></label>',
-    'Add note', () => {
-      const t=$('#f_r').value.trim(); if(!t) return false;
-      n.replies.push({ by:store.session.name, role:'Unit '+myUnit(), at:new Date(), text:t });
-      commit('Unit '+n.unit+' added a note to “'+n.subject+'”.',{title:'Note added'}); return true; });
+      commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent',audience:['admin','board']}); return true; });
 }
 function closeConcern(id){ const n=store.concerns.find(x=>x.id===id); n.status='Closed';
   commit('Thread “'+n.subject+'” closed.',{title:'Thread closed'}); }
@@ -2546,7 +2652,7 @@ function ticketForm(){
     'Send ticket', () => {
       const s=$('#f_s').value.trim(); if(!s){ toast('info','Add a subject','Support needs a one-line summary.'); return false; }
       store.tickets.unshift({ id:uid(), unit:myUnit(), by:store.session.name, subject:s, channel:'Portal',
-        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.' });
+        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[] });
       commit('Support ticket opened by unit '+myUnit()+' — '+s+'.',{title:'Ticket sent'}); return true; });
 }
 function resolveTicket(id){ const t=store.tickets.find(x=>x.id===id); t.status='Resolved';
