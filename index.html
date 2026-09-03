@@ -1550,9 +1550,13 @@ function staffAvailabilityLine(){
       '<span class="meta">'+online.map(a=>esc(a.name)+' ('+esc(ROLE_LABEL(a.role))+')').join(', ')+'</span>'
     : '<span class="tag t-grey">● No staff online right now</span> <span class="meta">Usually replies within a few hours.</span>';
 }
+function handledByTag(item){
+  return item.handledBy ? '<span class="tag t-slate">→ '+esc(item.handledBy.name)+'</span>' : '<span class="tag t-grey">Unassigned</span>';
+}
 function claimLine(item){
   if(!isStaffSide()) return item.handledBy
-    ? '<span class="meta">Being handled by '+esc(item.handledBy.name)+' ('+esc(item.handledBy.role)+')</span>' : '';
+    ? '<span class="tag t-emerald">Being handled by '+esc(item.handledBy.name)+' ('+esc(item.handledBy.role)+')</span>'
+    : '<span class="meta">No staff was online to auto-assign this — the next person to open it will pick it up.</span>';
   if(item.handledBy && item.handledBy.name===store.session.name)
     return '<span class="tag t-emerald">You are handling this</span> <button class="btn btn-ghost btn-sm" onclick="releaseChat()">Release</button>';
   if(item.handledBy)
@@ -1598,12 +1602,32 @@ function sendChatMessage(){
   const roleLabel = staffSide ? ROLE_LABEL(store.session.role) : 'Unit '+myUnit();
   (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:val });
   if(staffSide && !item.handledBy) item.handledBy = { name:store.session.name, role:roleLabel };
+  else if(!staffSide) autoAssign(item);
   commit(
     staffSide ? roleLabel+' replied to unit '+item.unit+' on "'+subj+'".' : 'Unit '+myUnit()+' messaged the Board and Admin about "'+subj+'".',
     { title: staffSide ? 'Reply posted' : 'Message sent', audience:['admin','board'] }
   );
   input.value='';
   refreshChat();
+}
+/* ---- auto-assignment: route a fresh message to one available admin, so it isn't left for "whoever notices" ---- */
+function openLoadOf(name){
+  let n = 0;
+  [store.concerns, store.complaints, store.requests, store.tickets].forEach(list => list.forEach(item => {
+    const open = item.status!=='Closed' && item.status!=='Resolved';
+    if(open && item.handledBy && item.handledBy.name===name) n++;
+  }));
+  return n;
+}
+function pickAvailableAdmin(){
+  const online = staffOnline().filter(a=>a.role==='admin');
+  if(!online.length) return null;
+  return online.slice().sort((a,b)=>openLoadOf(a.name)-openLoadOf(b.name))[0];
+}
+function autoAssign(item){
+  if(item.handledBy) return;
+  const a = pickAvailableAdmin();
+  if(a) item.handledBy = { name:a.name, role:ROLE_LABEL(a.role) };
 }
 function claimChat(){
   const item = findMsgItem(chatCtx.kind, chatCtx.id);
@@ -1635,8 +1659,10 @@ function quickMessageAdmin(){
       if(!t){ toast('info','Add a message','Write a line or two first.'); return false; }
       const subject = t.length > 60 ? t.slice(0,57)+'…' : t;
       const id = uid();
-      store.concerns.unshift({ id, unit:myUnit(), by:store.session.name, topic:'Question', subject,
-        message:t, status:'Open', at:new Date(), replies:[] });
+      const item = { id, unit:myUnit(), by:store.session.name, topic:'Question', subject,
+        message:t, status:'Open', at:new Date(), replies:[] };
+      autoAssign(item);
+      store.concerns.unshift(item);
       commit('Unit '+myUnit()+' messaged Admin/Staff — "'+subject+'".',{title:'Message sent',audience:['admin']});
       openChat('concern', id); return false; /* stay open in the chat window instead of just closing */
     });
@@ -1648,7 +1674,7 @@ function messagesInboxView(){
     concerns(){
       return sectionCard('Concerns from homeowners', store.concerns.length ? '<ul class="list">' + store.concerns.map(n =>
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
-        '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
+        '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span>'+handledByTag(n)+'<span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
         '<div class="btn-row" style="margin-top:11px">' +
           '<button class="btn btn-ghost btn-sm" onclick="openChat(\'concern\',\''+n.id+'\')">Reply</button>' +
@@ -1659,7 +1685,7 @@ function messagesInboxView(){
     complaints(){
       return sectionCard('Complaints and violations', store.complaints.length ? '<ul class="list">' + store.complaints.map(c =>
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+'</div>' +
-        '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>' +
+        '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>'+handledByTag(c)+
         '<span class="mono">'+esc(c.unit)+'</span>·<span>'+esc(c.by)+'</span>·<span>Against '+esc(c.against)+'</span>·<span>'+ago(c.filedAt)+'</span></div>' +
         '<div class="body">'+esc(c.detail)+'</div>' +
         (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0"><strong style="font-size:13px">Resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
@@ -1671,7 +1697,7 @@ function messagesInboxView(){
     requests(){
       return sectionCard('Maintenance requests', store.requests.length ? '<ul class="list">' + store.requests.map(r =>
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
-        '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
+        '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span>'+handledByTag(r)+'<span class="mono">'+esc(r.unit)+'</span>·<span>'+esc(r.by)+'</span>·<span>'+ago(r.at)+'</span></div>' +
         '<div class="body">'+esc(r.detail)+'</div>' +
         (r.assignee ? '<div class="meta">Assigned to '+esc(r.assignee)+'</div>' : '') +
         threadHTML(r) +
@@ -1682,7 +1708,7 @@ function messagesInboxView(){
     tickets(){
       return sectionCard('Support tickets', store.tickets.length ? '<ul class="list">' + store.tickets.map(x =>
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
-        '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·<span>'+ago(x.at)+'</span></div>' +
+        '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span>'+handledByTag(x)+'<span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·<span>'+ago(x.at)+'</span></div>' +
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
         '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'ticket\',\''+x.id+'\')">Reply</button>' +
         '</div><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></div></li>').join('') + '</ul>'
@@ -2379,8 +2405,10 @@ function requestForm(){
     'Submit request', () => {
       const title=$('#f_title').value.trim();
       if(!title){ toast('info','Add a title','Give the office something to search for.'); return false; }
-      store.requests.unshift({ id:uid(), unit:myUnit(), by:store.session.name, type:$('#f_type').value, title,
-        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[] });
+      const item = { id:uid(), unit:myUnit(), by:store.session.name, type:$('#f_type').value, title,
+        detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[] };
+      autoAssign(item);
+      store.requests.unshift(item);
       commit('Request filed by unit '+myUnit()+' — “'+title+'”.',{title:'Request submitted'}); return true; });
 }
 
@@ -2680,9 +2708,11 @@ function complaintForm(){
       const title=$('#f_title').value.trim();
       if(!title){ toast('info','Add a summary','One line describing the issue.'); return false; }
       const ref = 'CMP-'+new Date().toISOString().slice(2,4)+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(store.complaints.length+1).padStart(2,'0');
-      store.complaints.unshift({ id:uid(), unit:myUnit(), by:store.session.name, against:$('#f_ag').value.trim()||'Not specified',
+      const item = { id:uid(), unit:myUnit(), by:store.session.name, against:$('#f_ag').value.trim()||'Not specified',
         category:$('#f_cat').value, title, detail:$('#f_detail').value.trim()||'No further details.',
-        status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[] });
+        status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[] };
+      autoAssign(item);
+      store.complaints.unshift(item);
       commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed',audience:['admin','board']}); return true; });
 }
 function concernForm(){
@@ -2693,8 +2723,10 @@ function concernForm(){
     'Send to the board', () => {
       const sub=$('#f_sub').value.trim();
       if(!sub){ toast('info','Add a subject','Give the thread a title.'); return false; }
-      store.concerns.unshift({ id:uid(), unit:myUnit(), by:store.session.name, topic:$('#f_top').value, subject:sub,
-        message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[] });
+      const item = { id:uid(), unit:myUnit(), by:store.session.name, topic:$('#f_top').value, subject:sub,
+        message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[] };
+      autoAssign(item);
+      store.concerns.unshift(item);
       commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent',audience:['admin','board']}); return true; });
 }
 function closeConcern(id){ const n=store.concerns.find(x=>x.id===id); n.status='Closed';
@@ -2807,8 +2839,10 @@ function ticketForm(){
     '<label class="fld"><span>What went wrong</span><textarea class="input" id="f_d"></textarea></label>',
     'Send ticket', () => {
       const s=$('#f_s').value.trim(); if(!s){ toast('info','Add a subject','Support needs a one-line summary.'); return false; }
-      store.tickets.unshift({ id:uid(), unit:myUnit(), by:store.session.name, subject:s, channel:'Portal',
-        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[] });
+      const item = { id:uid(), unit:myUnit(), by:store.session.name, subject:s, channel:'Portal',
+        priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[] };
+      autoAssign(item);
+      store.tickets.unshift(item);
       commit('Support ticket opened by unit '+myUnit()+' — '+s+'.',{title:'Ticket sent'}); return true; });
 }
 function resolveTicket(id){ const t=store.tickets.find(x=>x.id===id); t.status='Resolved';
