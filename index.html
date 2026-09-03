@@ -127,15 +127,18 @@ html[data-theme="dark"] .syncrail.flash{animation:railFlashDark 1.3s ease}
 .notif-panel{position:fixed;top:60px;right:12px;width:min(360px, calc(100vw - 24px));max-height:min(64dvh,520px);overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 20px 44px -16px rgba(16,23,37,.35);z-index:70;animation:sheetUp .2s cubic-bezier(.2,.7,.3,1)}
 .notif-panel .nh{display:flex;align-items:center;gap:10px;padding:13px 15px;border-bottom:1px solid var(--line);position:sticky;top:0;background:inherit}
 .notif-panel .nh h4{font-size:15px;font-weight:700;flex:1}
-.notif-item{width:100%;padding:12px 15px;border:0;border-bottom:1px solid var(--line);display:flex;gap:11px;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:.13s}
+.notif-item{width:100%;padding:0;border:0;border-bottom:1px solid var(--line);display:flex;gap:0;transition:.13s}
 .notif-item:hover{background:var(--paper)}
 .notif-item:last-child{border-bottom:0}
-.notif-item .nb{width:8px;height:8px;border-radius:50%;background:var(--slate);margin-top:6px;flex:none}
+.notif-dotbtn{flex:none;border:0;background:none;cursor:pointer;padding:14px 4px 14px 15px}
+.notif-item .nb{display:block;width:8px;height:8px;border-radius:50%;background:var(--slate);margin-top:6px;flex:none}
 .notif-item.read .nb{background:var(--line)}
+.notif-main{flex:1;min-width:0;border:0;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;padding:12px 15px 12px 8px}
 .notif-item .nt{font-weight:650;font-size:13.5px}
 .notif-item .nm{font-size:13px;color:var(--ink-2);margin-top:2px}
-.notif-item .na{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:4px;display:flex;gap:6px;align-items:center}
+.notif-item .na{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .notif-item .unreadpill{background:var(--slate-tint);color:var(--slate-dk);border-radius:20px;padding:1px 7px;font-weight:700;letter-spacing:.02em}
+.notif-item .openpill{background:var(--emerald-tint);color:var(--emerald);border-radius:20px;padding:1px 7px;font-weight:700;letter-spacing:.02em}
 .notif-item.read .nt{font-weight:600;color:var(--ink-2)}
 
 /* calendar */
@@ -684,7 +687,8 @@ const statusTag = s => ({
 function commit(msg, opts={}){
   store.lastSync = { msg, at:new Date() };
   store.notifs.unshift({ id:uid(), title:opts.title||'Update', msg, at:new Date(),
-                         audience:opts.audience||'all', forUnit:opts.forUnit||null, read:false });
+                         audience:opts.audience||'all', forUnit:opts.forUnit||null, read:false,
+                         chat:opts.chat||null, go:opts.go||null });
   if(store.notifs.length > 40) store.notifs.length = 40;
   render();
   const rail = $('#syncrail');
@@ -732,12 +736,16 @@ function openNotifs(){
       '<div class="nh"><h4>Notifications</h4>' +
       (anyUnread ? '<button class="btn btn-ghost btn-sm" onclick="markAllNotifsRead()">Mark all read</button>' : '') +
       (items.length ? '<button class="btn btn-ghost btn-sm" onclick="clearNotifs()">Clear all</button>' : '') + '</div>' +
-      (items.length ? items.map(n =>
-        '<button type="button" class="notif-item'+(n.read?' read':'')+'" onclick="toggleNotifRead(\''+n.id+'\')" aria-pressed="'+(!n.read)+'">' +
-        '<span class="nb"></span><div>' +
+      (items.length ? items.map(n => {
+        const goesSomewhere = !!(n.chat || n.go);
+        return '<div class="notif-item'+(n.read?' read':'')+'">' +
+        '<button type="button" class="notif-dotbtn" onclick="toggleNotifRead(\''+n.id+'\')" aria-label="'+(n.read?'Mark unread':'Mark read')+'"><span class="nb"></span></button>' +
+        '<button type="button" class="notif-main" onclick="activateNotif(\''+n.id+'\')">' +
         '<div class="nt">'+esc(n.title)+'</div><div class="nm">'+esc(n.msg)+'</div>' +
         '<div class="na"><span>'+ago(n.at)+' · '+clock(n.at)+'</span>' +
-        (n.read?'':'<span class="unreadpill">Unread · tap to mark read</span>') + '</div></div></button>').join('')
+        (goesSomewhere ? '<span class="openpill">Tap to open</span>' : (n.read?'':'<span class="unreadpill">Unread</span>')) +
+        '</div></button></div>';
+      }).join('')
         : '<div class="empty"><strong>Nothing yet</strong>Payments, approvals and board posts show up here.</div>') +
     '</div>';
 }
@@ -745,6 +753,26 @@ function closeNotifs(){ notifOpen=false; $('#notifHost').innerHTML=''; const b=$
 function toggleNotifRead(id){
   const n = store.notifs.find(x=>x.id===id); if(!n) return;
   n.read = !n.read;
+  openNotifs(); paintBell();
+}
+/* clicking the body of a notification: mark read, then go wherever it's about, if anywhere */
+function activateNotif(id){
+  const n = store.notifs.find(x=>x.id===id); if(!n) return;
+  n.read = true;
+  if(n.chat){
+    const item = findMsgItem(n.chat.kind, n.chat.id);
+    closeNotifs(); paintBell();
+    if(item) openChat(n.chat.kind, n.chat.id);
+    else toast('info','No longer available','That item has since been removed.');
+    return;
+  }
+  if(n.go){
+    closeNotifs(); paintBell();
+    if(typeof n.go === 'function') n.go();
+    else if(typeof n.go === 'string') go(n.go);
+    else { go(n.go.view); if(n.go.tab) goTab(n.go.tab.section, n.go.tab.id); }
+    return;
+  }
   openNotifs(); paintBell();
 }
 function markAllNotifsRead(){ myNotifs().forEach(n=>n.read=true); openNotifs(); paintBell(); }
@@ -1614,8 +1642,8 @@ function sendChatMessage(){
   commit(
     staffSide ? roleLabel+' replied to unit '+item.unit+' on "'+subj+'".' : 'Unit '+myUnit()+' messaged the Board and Admin about "'+subj+'".',
     staffSide
-      ? { title:'Reply posted', audience:['admin','board'], forUnit:item.unit }
-      : { title:'Message sent', audience:['admin','board'] }
+      ? { title:'Reply posted', audience:['admin','board'], forUnit:item.unit, chat:{kind:chatCtx.kind,id:chatCtx.id} }
+      : { title:'Message sent', audience:['admin','board'], chat:{kind:chatCtx.kind,id:chatCtx.id} }
   );
   input.value='';
   refreshChat();
@@ -1642,13 +1670,15 @@ function autoAssign(item){
 function claimChat(){
   const item = findMsgItem(chatCtx.kind, chatCtx.id);
   item.handledBy = { name:store.session.name, role:ROLE_LABEL(store.session.role) };
-  commit(store.session.name+' is now handling "'+MSG_KINDS[chatCtx.kind].subj(item)+'".',{title:'Conversation claimed',audience:['admin','board']});
+  commit(store.session.name+' is now handling "'+MSG_KINDS[chatCtx.kind].subj(item)+'".',
+    {title:'Conversation claimed',audience:['admin','board'],chat:{kind:chatCtx.kind,id:chatCtx.id}});
   refreshChat();
 }
 function releaseChat(){
   const item = findMsgItem(chatCtx.kind, chatCtx.id);
   item.handledBy = null;
-  commit('"'+MSG_KINDS[chatCtx.kind].subj(item)+'" was released back to the queue.',{title:'Conversation released',audience:['admin','board']});
+  commit('"'+MSG_KINDS[chatCtx.kind].subj(item)+'" was released back to the queue.',
+    {title:'Conversation released',audience:['admin','board'],chat:{kind:chatCtx.kind,id:chatCtx.id}});
   refreshChat();
 }
 function refreshChat(){
@@ -1673,7 +1703,7 @@ function quickMessageAdmin(){
         message:t, status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.concerns.unshift(item);
-      commit('Unit '+myUnit()+' messaged Admin/Staff — "'+subject+'".',{title:'Message sent',audience:['admin']});
+      commit('Unit '+myUnit()+' messaged Admin/Staff — "'+subject+'".',{title:'Message sent',audience:['admin'],chat:{kind:'concern',id}});
       openChat('concern', id); return false; /* stay open in the chat window instead of just closing */
     });
 }
@@ -2379,9 +2409,9 @@ function announceForm(id){
       const title=$('#f_title').value.trim(), body=$('#f_body').value.trim();
       if(!title||!body){ toast('info','Missing details','A title and body are both required.'); return false; }
       const rec={ title, body, date:$('#f_date').value, category:$('#f_cat').value, attach:$('#f_att').value.trim() };
-      if(a){ Object.assign(a,rec); commit('Announcement updated — “'+title+'” is live in every feed.',{title:'Announcement updated'}); }
+      if(a){ Object.assign(a,rec); commit('Announcement updated — “'+title+'” is live in every feed.',{title:'Announcement updated',go:gotoFeed}); }
       else { store.announcements.unshift(Object.assign({id:uid(),at:new Date()},rec));
-        commit('New announcement pushed to 412 households — “'+title+'”.',{title:'Announcement posted'}); }
+        commit('New announcement pushed to 412 households — “'+title+'”.',{title:'Announcement posted',go:gotoFeed}); }
       return true;
     });
 }
@@ -2397,7 +2427,7 @@ function markAllSeen(){ store.announcements.forEach(a=>store.seen.add(a.id)); re
 
 /* requests */
 function setReq(id,status){ const r=store.requests.find(x=>x.id===id); r.status=status;
-  commit('Ticket for unit '+r.unit+' set to '+status.toLowerCase()+'.',{title:'Request updated'}); }
+  commit('Ticket for unit '+r.unit+' set to '+status.toLowerCase()+'.',{title:'Request updated',chat:{kind:'request',id:r.id}}); }
 function assignForm(id){
   const r = store.requests.find(x=>x.id===id);
   modal('Assign this ticket','The homeowner sees who is handling it.',
@@ -2405,7 +2435,7 @@ function assignForm(id){
     '<label class="fld"><span>Priority</span><select class="input" id="f_pr">'+['Low','Normal','High'].map(p=>'<option '+(r.priority===p?'selected':'')+'>'+p+'</option>').join('')+'</select></label>',
     'Save', () => { r.assignee=$('#f_as').value.trim(); r.priority=$('#f_pr').value;
       if(r.status==='Open') r.status='In progress';
-      commit('Ticket '+r.title+' assigned to '+(r.assignee||'the crew')+'.',{title:'Ticket assigned'}); return true; });
+      commit('Ticket '+r.title+' assigned to '+(r.assignee||'the crew')+'.',{title:'Ticket assigned',chat:{kind:'request',id:r.id}}); return true; });
 }
 function requestForm(){
   modal('Report an issue','The admin office picks this up on their dashboard immediately.',
@@ -2419,7 +2449,7 @@ function requestForm(){
         detail:$('#f_detail').value.trim()||'No further details given.', priority:'Normal', assignee:'', status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.requests.unshift(item);
-      commit('Request filed by unit '+myUnit()+' — “'+title+'”.',{title:'Request submitted'}); return true; });
+      commit('Request filed by unit '+myUnit()+' — “'+title+'”.',{title:'Request submitted',chat:{kind:'request',id:item.id}}); return true; });
 }
 
 /* dues */
@@ -2478,11 +2508,18 @@ function bookForm(preset, presetDate){
       const auto = store.settings.autoApproveBookings;
       store.bookings.unshift({ id:uid(), unit:myUnit(), by:store.session.name, facility:fac,
         date, slot, purpose, status: auto?'Approved':'Pending' });
-      commit(fac+(auto?' confirmed for unit ':' requested by unit ')+myUnit()+' on '+fmtDate(date)+'.',{title:auto?'Booking confirmed':'Booking sent'});
+      commit(fac+(auto?' confirmed for unit ':' requested by unit ')+myUnit()+' on '+fmtDate(date)+'.',
+        {title:auto?'Booking confirmed':'Booking sent', go:gotoBookings});
       return true; });
 }
+function gotoBookings(){ isStaffSide() ? (go('operations'), goTab('ops','bookings')) : go('book'); }
+function gotoFeed(){
+  const r = store.session.role;
+  if(r==='homeowner'||r==='renter') go('feed');
+  else if(r==='admin'){ go('governance'); goTab('gov','announcements'); }
+}
 function setBooking(id,status){ const b=store.bookings.find(x=>x.id===id); b.status=status;
-  commit(b.facility+' on '+fmtDate(b.date)+' '+status.toLowerCase()+' for unit '+b.unit+'.',{title:'Booking '+status.toLowerCase()}); }
+  commit(b.facility+' on '+fmtDate(b.date)+' '+status.toLowerCase()+' for unit '+b.unit+'.',{title:'Booking '+status.toLowerCase(), go:gotoBookings}); }
 
 /* security + board actions */
 function validateForm(){
@@ -2694,7 +2731,7 @@ function closeIncident(id){ const i=store.incidents.find(x=>x.id===id); i.status
 
 /* governance */
 function setComplaint(id,status){ const c=store.complaints.find(x=>x.id===id); c.status=status;
-  commit('Complaint '+c.ref+' marked '+status.toLowerCase()+'.',{title:'Complaint updated'}); }
+  commit('Complaint '+c.ref+' marked '+status.toLowerCase()+'.',{title:'Complaint updated',chat:{kind:'complaint',id:c.id}}); }
 function resolveComplaint(id){
   const c = store.complaints.find(x=>x.id===id);
   modal('Record a resolution','This is posted to the homeowner\u2019s filing.',
@@ -2705,7 +2742,7 @@ function resolveComplaint(id){
       const t=$('#f_res').value.trim();
       if(!t){ toast('info','Write the resolution','The homeowner needs a written answer.'); return false; }
       c.resolution=t; c.status='Resolved';
-      commit('Complaint '+c.ref+' resolved and posted to unit '+c.unit+'.',{title:'Complaint resolved'}); return true; });
+      commit('Complaint '+c.ref+' resolved and posted to unit '+c.unit+'.',{title:'Complaint resolved',forUnit:c.unit,chat:{kind:'complaint',id:c.id}}); return true; });
 }
 function complaintForm(){
   modal('File a complaint','The board logs this with a reference number and answers in writing.',
@@ -2723,7 +2760,7 @@ function complaintForm(){
         status:'Under review', ref, filedAt:new Date(), resolution:'', replies:[], staffUnread:true };
       autoAssign(item);
       store.complaints.unshift(item);
-      commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed',audience:['admin','board']}); return true; });
+      commit('Complaint '+ref+' filed by unit '+myUnit()+' — '+title+'.',{title:'Complaint filed',audience:['admin','board'],chat:{kind:'complaint',id:item.id}}); return true; });
 }
 function concernForm(){
   modal('Raise a concern','This starts a thread with the board. Expect a reply, not a ruling.',
@@ -2737,10 +2774,10 @@ function concernForm(){
         message:$('#f_msg').value.trim()||'No further details.', status:'Open', at:new Date(), replies:[], staffUnread:true };
       autoAssign(item);
       store.concerns.unshift(item);
-      commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent',audience:['admin','board']}); return true; });
+      commit('Concern raised by unit '+myUnit()+' — '+sub+'.',{title:'Concern sent',audience:['admin','board'],chat:{kind:'concern',id:item.id}}); return true; });
 }
 function closeConcern(id){ const n=store.concerns.find(x=>x.id===id); n.status='Closed';
-  commit('Thread “'+n.subject+'” closed.',{title:'Thread closed'}); }
+  commit('Thread “'+n.subject+'” closed.',{title:'Thread closed',chat:{kind:'concern',id:n.id}}); }
 function ruleForm(){
   modal('Add a house rule','Homeowners can cite this when filing a complaint.',
     '<label class="fld"><span>Rule title</span><input class="input" id="f_t" placeholder="Quiet hours"></label>' +
@@ -2853,10 +2890,10 @@ function ticketForm(){
         priority:$('#f_p').value, status:'Open', at:new Date(), detail:$('#f_d').value.trim()||'No further details.', replies:[], staffUnread:true };
       autoAssign(item);
       store.tickets.unshift(item);
-      commit('Support ticket opened by unit '+myUnit()+' — '+s+'.',{title:'Ticket sent'}); return true; });
+      commit('Support ticket opened by unit '+myUnit()+' — '+s+'.',{title:'Ticket sent',chat:{kind:'ticket',id:item.id}}); return true; });
 }
 function resolveTicket(id){ const t=store.tickets.find(x=>x.id===id); t.status='Resolved';
-  commit('Support ticket “'+t.subject+'” marked resolved.',{title:'Ticket resolved'}); }
+  commit('Support ticket “'+t.subject+'” marked resolved.',{title:'Ticket resolved',forUnit:t.unit,chat:{kind:'ticket',id:t.id}}); }
 
 /* settings */
 function flipSetting(key){ store.settings[key] = !store.settings[key];
