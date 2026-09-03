@@ -1990,7 +1990,7 @@ const HOME = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newReplyTag(n)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">'+(n.status==='Closed'?'View chat':'Message Board &amp; Admin')+'</button>' +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No concerns raised','Ask about a facility, suggest an improvement, or send feedback on a board decision.')) + '</div>' +
       sectionCard('What others have raised','<ul class="list">' + store.concerns.filter(c=>c.unit!==myUnit()).map(n =>
@@ -2115,7 +2115,7 @@ const RENTER = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newReplyTag(n)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">'+(n.status==='Closed'?'View chat':'Message Board &amp; Admin')+'</button>' +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing raised','Ask about an amenity or send the board feedback.'));
   },
