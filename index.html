@@ -305,6 +305,24 @@ tr:last-child td{border-bottom:0}
 .modal-foot{display:flex;gap:9px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
 .modal-foot .btn{flex:1}
 @media(min-width:520px){.modal-foot .btn{flex:none}}
+
+/* chat window — Facebook-style thread with an always-open composer */
+.chat-modal{display:flex;flex-direction:column;max-height:88dvh}
+.chat-head{display:flex;align-items:flex-start;gap:10px}
+.chat-head h3{font-size:17px}
+.chat-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;font-size:12.5px}
+.chat-status:empty{display:none;margin:0}
+.chat-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin:14px 0;padding:2px}
+.bubble{max-width:82%;padding:9px 12px;border-radius:15px;font-size:13.5px;line-height:1.42}
+.bubble .who{font-size:11px;font-weight:700;margin-bottom:3px;opacity:.65}
+.bubble .txt{white-space:pre-wrap;overflow-wrap:break-word}
+.bubble .when{font-size:10.5px;margin-top:4px;opacity:.55}
+.bubble.theirs{align-self:flex-start;background:var(--paper);border:1px solid var(--line);border-bottom-left-radius:4px}
+.bubble.mine{align-self:flex-end;background:var(--slate);color:#fff;border-bottom-right-radius:4px}
+.bubble.mine .when{opacity:.75}
+.chat-compose{display:flex;gap:8px;align-items:flex-end;padding-top:12px;border-top:1px solid var(--line)}
+.chat-compose textarea{flex:1;resize:none;min-height:44px;max-height:120px;margin-bottom:0}
+html[data-theme="dark"] .bubble.mine{color:#0E121C}
 #toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:90;display:flex;flex-direction:column;gap:8px;width:calc(100% - 28px);max-width:400px}
 .toast{background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start;box-shadow:0 12px 30px -10px rgba(16,23,37,.5);animation:sheetUp .25s cubic-bezier(.2,.7,.3,1)}
 .toast .tk{font-weight:700;display:block;margin-bottom:1px}
@@ -945,6 +963,7 @@ document.addEventListener('keydown', e => { if(e.key==='Escape'){ closeDrawer();
 function render(){
   if(!store.session.authed) return;
   const s = store.session;
+  const myAcct = store.accounts.find(a=>a.id===s.accountId); if(myAcct) myAcct.lastSeen = new Date();
   $('#avatar').textContent = initials(s.name);
   $('#avatar').title = s.name + ' · ' + s.email;
   $('#brandName').textContent = store.settings.assocName.replace(/^HOA\s*[—-]\s*/,'');
@@ -1177,7 +1196,7 @@ const ADMIN = {
             ['Open','In progress','Resolved'].map(s => s===r.status ? '' :
               '<button class="btn btn-ghost btn-sm" onclick="setReq(\''+r.id+'\',\''+s+'\')">Mark '+s.toLowerCase()+'</button>').join('') +
             '<button class="btn btn-ghost btn-sm" onclick="assignForm(\''+r.id+'\')">Assign</button>' +
-            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'request\',\''+r.id+'\')">Reply</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="openChat(\'request\',\''+r.id+'\')">Reply</button>' +
           '</div></div><span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul>');
       },
       bookings(){ return sectionCard('Facility bookings', bookingTable(store.bookings, true)); },
@@ -1287,7 +1306,7 @@ const ADMIN = {
           '<div class="btn-row" style="margin-top:11px">' +
             (c.status!=='Resolved' ? '<button class="btn btn-emerald btn-sm" onclick="resolveComplaint(\''+c.id+'\')">Record resolution</button>' +
             '<button class="btn btn-ghost btn-sm" onclick="setComplaint(\''+c.id+'\',\'Escalated\')">Escalate to board</button>' : '') +
-            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'complaint\',\''+c.id+'\')">Reply</button></div>' +
+            '<button class="btn btn-ghost btn-sm" onclick="openChat(\'complaint\',\''+c.id+'\')">Reply</button></div>' +
           '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>');
       },
       concerns(){
@@ -1296,7 +1315,7 @@ const ADMIN = {
           '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
           '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
           '<div class="btn-row" style="margin-top:11px">' +
-            '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'concern\',\''+n.id+'\')">Reply</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="openChat(\'concern\',\''+n.id+'\')">Reply</button>' +
             (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" onclick="closeConcern(\''+n.id+'\')">Close thread</button>' : '') +
           '</div></div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
           : empty('No concerns raised','Homeowner suggestions and questions land here.'));
@@ -1498,42 +1517,115 @@ function threadHTML(n){
     '<div class="body" style="margin-top:3px">'+esc(r.text)+'</div></div>').join('') + '</div>';
 }
 
-/* ---- messaging: a resident can message the Board + Admin directly from any log entry ---- */
+/* ---- messaging: a resident can chat with Board + Admin directly from any log entry ---- */
 const MSG_KINDS = {
-  request:  { store:'requests',   subj:x=>x.title,   label:'request'   },
-  complaint:{ store:'complaints', subj:x=>x.title,   label:'complaint' },
-  ticket:   { store:'tickets',    subj:x=>x.subject, label:'ticket'    },
-  concern:  { store:'concerns',   subj:x=>x.subject, label:'concern'   }
+  request:  { store:'requests',   subj:x=>x.title,   label:'request',   body:x=>x.detail,  when:x=>x.at },
+  complaint:{ store:'complaints', subj:x=>x.title,   label:'complaint', body:x=>x.detail,  when:x=>x.filedAt },
+  ticket:   { store:'tickets',    subj:x=>x.subject, label:'ticket',    body:x=>x.detail,  when:x=>x.at },
+  concern:  { store:'concerns',   subj:x=>x.subject, label:'concern',   body:x=>x.message, when:x=>x.at }
 };
 function findMsgItem(kind, id){ return store[MSG_KINDS[kind].store].find(x=>x.id===id); }
+const STAFF_AWAY_MS = 30*60*1000; /* an account counts as "online" if seen within the last 30 min */
 
-/* resident -> Board + Admin */
-function messageForm(kind, id){
-  const item = findMsgItem(kind, id);
-  modal('Message the Board & Admin','This goes straight to the admin office and the Board — expect a reply in this thread.',
-    '<label class="fld"><span>Your message</span><textarea class="input" id="f_msg" placeholder="Add detail, a question, or a follow-up on this '+MSG_KINDS[kind].label+'…"></textarea></label>',
-    'Send message', () => {
-      const t = $('#f_msg').value.trim(); if(!t) return false;
-      (item.replies = item.replies || []).push({ by:store.session.name, role:'Unit '+myUnit(), at:new Date(), text:t });
-      commit('Unit '+myUnit()+' messaged the Board and Admin about "'+MSG_KINDS[kind].subj(item)+'".',
-        { title:'Message sent', audience:['admin','board'] });
-      return true;
-    });
+/* ---- Facebook-style chat window: one thread, an always-open composer, no re-opening a form per message ---- */
+let chatCtx = null;
+function chatMessages(kind, item){
+  const cfg = MSG_KINDS[kind];
+  const first = { by:item.by, role:'Unit '+item.unit, at:cfg.when(item), text:cfg.body(item) };
+  return [first].concat(item.replies || []).map(m => Object.assign({}, m, { mine: m.by === store.session.name }));
 }
-/* admin or board -> resident, in the same thread */
-function replyToItem(kind, id){
-  const item = findMsgItem(kind, id);
-  const roleLabel = ROLE_LABEL(store.session.role);
-  modal('Reply to '+item.by,'Your reply appears in their thread straight away.',
-    '<label class="fld"><span>Reply</span><textarea class="input" id="f_r"></textarea></label>',
-    'Post reply', () => {
-      const t = $('#f_r').value.trim(); if(!t) return false;
-      (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:t });
-      commit(roleLabel+' replied to unit '+item.unit+' on "'+MSG_KINDS[kind].subj(item)+'".',
-        { title:'Reply posted', audience:['admin','board'] });
-      return true;
-    });
+function chatBubble(m){
+  return '<div class="bubble '+(m.mine?'mine':'theirs')+'">' +
+    (m.mine ? '' : '<div class="who">'+esc(m.by)+' · '+esc(m.role)+'</div>') +
+    '<div class="txt">'+esc(m.text)+'</div>' +
+    '<div class="when">'+ago(m.at)+'</div></div>';
 }
+function staffAccounts(){ return store.accounts.filter(a => (a.role==='admin'||a.role==='board') && a.status==='Active'); }
+function staffOnline(){ return staffAccounts().filter(a => a.lastSeen && (Date.now()-new Date(a.lastSeen)) < STAFF_AWAY_MS); }
+function staffAvailabilityLine(){
+  const staff = staffAccounts(), online = staffOnline();
+  if(!staff.length) return '';
+  return online.length
+    ? '<span class="tag t-emerald">● '+online.length+' of '+staff.length+' staff online</span> ' +
+      '<span class="meta">'+online.map(a=>esc(a.name)+' ('+esc(ROLE_LABEL(a.role))+')').join(', ')+'</span>'
+    : '<span class="tag t-grey">● No staff online right now</span> <span class="meta">Usually replies within a few hours.</span>';
+}
+function claimLine(item){
+  if(!isStaffSide()) return item.handledBy
+    ? '<span class="meta">Being handled by '+esc(item.handledBy.name)+' ('+esc(item.handledBy.role)+')</span>' : '';
+  if(item.handledBy && item.handledBy.name===store.session.name)
+    return '<span class="tag t-emerald">You are handling this</span> <button class="btn btn-ghost btn-sm" onclick="releaseChat()">Release</button>';
+  if(item.handledBy)
+    return '<span class="tag t-amber">Being handled by '+esc(item.handledBy.name)+'</span>';
+  return '<button class="btn btn-ghost btn-sm" onclick="claimChat()">Claim this conversation</button> ' +
+    '<span class="meta">Claim it first so another staff member does not reply at the same time.</span>';
+}
+function openChat(kind, id){
+  chatCtx = { kind, id };
+  closeModal(); modalOpen = true;
+  $('#modalHost').innerHTML = chatModalHTML();
+  const scrim = $('#mScrim');
+  scrim.onclick = e => { if(e.target.id==='mScrim') closeModal(); };
+  $('#chatClose').onclick = closeModal;
+  $('#chatSend').onclick = sendChatMessage;
+  const input = $('#chatInput');
+  input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendChatMessage(); } });
+  input.focus();
+  scrollChatToBottom();
+}
+function chatModalHTML(){
+  const item = findMsgItem(chatCtx.kind, chatCtx.id);
+  const subj = MSG_KINDS[chatCtx.kind].subj(item);
+  const msgs = chatMessages(chatCtx.kind, item);
+  return '<div class="modal-scrim" id="mScrim"><div class="modal chat-modal" role="dialog" aria-modal="true" aria-label="Chat about '+esc(subj)+'">' +
+    '<div class="chat-head"><div class="grow"><h3>'+esc(subj)+'</h3>' +
+    '<p class="sub" style="margin:2px 0 0">Unit '+esc(item.unit)+' · '+esc(item.by)+'</p></div>' +
+    '<button class="icon-btn" id="chatClose" aria-label="Close chat">' +
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+    '<div class="chat-status" id="chatStaffStatus">'+staffAvailabilityLine()+'</div>' +
+    '<div class="chat-status" id="chatClaimStatus">'+claimLine(item)+'</div>' +
+    '<div class="chat-body" id="chatBody">' + msgs.map(chatBubble).join('') + '</div>' +
+    '<div class="chat-compose">' +
+      '<textarea class="input" id="chatInput" rows="1" placeholder="Type a message…"></textarea>' +
+      '<button class="btn btn-primary" id="chatSend" style="width:auto">Send</button>' +
+    '</div></div></div>';
+}
+function sendChatMessage(){
+  const input = $('#chatInput'); const val = input.value.trim(); if(!val) return;
+  const item = findMsgItem(chatCtx.kind, chatCtx.id);
+  const subj = MSG_KINDS[chatCtx.kind].subj(item);
+  const staffSide = isStaffSide();
+  const roleLabel = staffSide ? ROLE_LABEL(store.session.role) : 'Unit '+myUnit();
+  (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:val });
+  if(staffSide && !item.handledBy) item.handledBy = { name:store.session.name, role:roleLabel };
+  commit(
+    staffSide ? roleLabel+' replied to unit '+item.unit+' on "'+subj+'".' : 'Unit '+myUnit()+' messaged the Board and Admin about "'+subj+'".',
+    { title: staffSide ? 'Reply posted' : 'Message sent', audience:['admin','board'] }
+  );
+  input.value='';
+  refreshChat();
+}
+function claimChat(){
+  const item = findMsgItem(chatCtx.kind, chatCtx.id);
+  item.handledBy = { name:store.session.name, role:ROLE_LABEL(store.session.role) };
+  commit(store.session.name+' is now handling "'+MSG_KINDS[chatCtx.kind].subj(item)+'".',{title:'Conversation claimed',audience:['admin','board']});
+  refreshChat();
+}
+function releaseChat(){
+  const item = findMsgItem(chatCtx.kind, chatCtx.id);
+  item.handledBy = null;
+  commit('"'+MSG_KINDS[chatCtx.kind].subj(item)+'" was released back to the queue.',{title:'Conversation released',audience:['admin','board']});
+  refreshChat();
+}
+function refreshChat(){
+  if(!chatCtx || !modalOpen) return;
+  const item = findMsgItem(chatCtx.kind, chatCtx.id);
+  $('#chatBody').innerHTML = chatMessages(chatCtx.kind, item).map(chatBubble).join('');
+  $('#chatStaffStatus').innerHTML = staffAvailabilityLine();
+  $('#chatClaimStatus').innerHTML = claimLine(item);
+  scrollChatToBottom();
+}
+function scrollChatToBottom(){ const b=$('#chatBody'); if(b) b.scrollTop = b.scrollHeight; }
 /* quick top-bar message straight to Admin/Staff — the icon beside the bell */
 function quickMessageAdmin(){
   modal('Message Admin/Staff','A quick note to the admin office. For a formal filing, use Complaints or Concerns instead.',
@@ -1542,10 +1634,11 @@ function quickMessageAdmin(){
       const t = $('#f_qm').value.trim();
       if(!t){ toast('info','Add a message','Write a line or two first.'); return false; }
       const subject = t.length > 60 ? t.slice(0,57)+'…' : t;
-      store.concerns.unshift({ id:uid(), unit:myUnit(), by:store.session.name, topic:'Question', subject,
+      const id = uid();
+      store.concerns.unshift({ id, unit:myUnit(), by:store.session.name, topic:'Question', subject,
         message:t, status:'Open', at:new Date(), replies:[] });
       commit('Unit '+myUnit()+' messaged Admin/Staff — "'+subject+'".',{title:'Message sent',audience:['admin']});
-      return true;
+      openChat('concern', id); return false; /* stay open in the chat window instead of just closing */
     });
 }
 /* shared inbox of every resident message — used by both Admin and Board */
@@ -1558,7 +1651,7 @@ function messagesInboxView(){
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span class="mono">'+esc(n.unit)+'</span>·<span>'+esc(n.by)+'</span>·<span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
         '<div class="btn-row" style="margin-top:11px">' +
-          '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'concern\',\''+n.id+'\')">Reply</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openChat(\'concern\',\''+n.id+'\')">Reply</button>' +
           (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" onclick="closeConcern(\''+n.id+'\')">Close thread</button>' : '') +
         '</div></div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No concerns raised','Homeowner suggestions and questions land here.'));
@@ -1571,7 +1664,7 @@ function messagesInboxView(){
         '<div class="body">'+esc(c.detail)+'</div>' +
         (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0"><strong style="font-size:13px">Resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
         threadHTML(c) +
-        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'complaint\',\''+c.id+'\')">Reply</button>' +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'complaint\',\''+c.id+'\')">Reply</button>' +
         '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No complaints filed','Household complaints and violations land here.'));
     },
@@ -1582,7 +1675,7 @@ function messagesInboxView(){
         '<div class="body">'+esc(r.detail)+'</div>' +
         (r.assignee ? '<div class="meta">Assigned to '+esc(r.assignee)+'</div>' : '') +
         threadHTML(r) +
-        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'request\',\''+r.id+'\')">Reply</button>' +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'request\',\''+r.id+'\')">Reply</button>' +
         '</div><span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No requests filed','Maintenance requests from homeowners land here.'));
     },
@@ -1591,7 +1684,7 @@ function messagesInboxView(){
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·<span>'+ago(x.at)+'</span></div>' +
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
-        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="replyToItem(\'ticket\',\''+x.id+'\')">Reply</button>' +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'ticket\',\''+x.id+'\')">Reply</button>' +
         '</div><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No tickets raised','Portal support tickets land here.'));
     }
@@ -1617,8 +1710,8 @@ function supportView(admin){
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
         '<div class="btn-row" style="margin-top:10px">' +
           (admin && x.status!=='Resolved' ? '<button class="btn btn-emerald btn-sm" onclick="resolveTicket(\''+x.id+'\')">Mark resolved</button>' : '') +
-          (admin ? '<button class="btn btn-ghost btn-sm" onclick="replyToItem(\'ticket\',\''+x.id+'\')">Reply</button>'
-                 : '<button class="btn btn-ghost btn-sm" onclick="messageForm(\'ticket\',\''+x.id+'\')">Message Board &amp; Admin</button>') +
+          (admin ? '<button class="btn btn-ghost btn-sm" onclick="openChat(\'ticket\',\''+x.id+'\')">Reply</button>'
+                 : '<button class="btn btn-ghost btn-sm" onclick="openChat(\'ticket\',\''+x.id+'\')">Message Board &amp; Admin</button>') +
         '</div>' +
         '</div><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No tickets','Nothing has been raised with portal support.'),
@@ -1757,7 +1850,7 @@ const HOME = {
       '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span>Filed '+ago(r.at)+'</span>' +
       (r.assignee?'<span>Assigned to '+esc(r.assignee)+'</span>':'')+'</div>' +
       '<div class="body">'+esc(r.detail)+'</div>' + threadHTML(r) +
-      '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'request\',\''+r.id+'\')">Message Board &amp; Admin</button>' +
+      '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'request\',\''+r.id+'\')">Message Board &amp; Admin</button>' +
       '</div>' +
       '<span class="tag '+statusTag(r.status)+'">'+esc(r.status)+'</span></div></li>').join('') + '</ul></div>'
       : '<div class="card">'+empty('No requests yet','Report a streetlight, a clogged canal or a common area repair.')+'</div>');
@@ -1802,7 +1895,7 @@ const HOME = {
         (c.resolution ? '<div class="card card-pad" style="background:var(--emerald-tint);margin-top:10px;border:0">' +
           '<strong style="font-size:13px">Board resolution</strong><div class="body" style="margin-top:4px">'+esc(c.resolution)+'</div></div>' : '') +
         threadHTML(c) +
-        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'complaint\',\''+c.id+'\')">Message Board &amp; Admin</button>' +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'complaint\',\''+c.id+'\')">Message Board &amp; Admin</button>' +
         '</div><span class="tag '+statusTag(c.status)+'">'+esc(c.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing filed','Use a complaint for rule violations. For suggestions or questions, use Concerns instead.')) + '</div>' +
       sectionCard('House rules you can cite','<ul class="list">' + store.rules.map(r =>
@@ -1861,7 +1954,7 @@ const HOME = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
+        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('No concerns raised','Ask about a facility, suggest an improvement, or send feedback on a board decision.')) + '</div>' +
       sectionCard('What others have raised','<ul class="list">' + store.concerns.filter(c=>c.unit!==myUnit()).map(n =>
@@ -1986,7 +2079,7 @@ const RENTER = {
         '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
-        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="messageForm(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
+        (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
         '</div><span class="tag '+statusTag(n.status)+'">'+esc(n.status)+'</span></div></li>').join('') + '</ul>'
         : empty('Nothing raised','Ask about an amenity or send the board feedback.'));
   },
