@@ -684,7 +684,7 @@ const statusTag = s => ({
 function commit(msg, opts={}){
   store.lastSync = { msg, at:new Date() };
   store.notifs.unshift({ id:uid(), title:opts.title||'Update', msg, at:new Date(),
-                         audience:opts.audience||'all', read:false });
+                         audience:opts.audience||'all', forUnit:opts.forUnit||null, read:false });
   if(store.notifs.length > 40) store.notifs.length = 40;
   render();
   const rail = $('#syncrail');
@@ -711,8 +711,11 @@ function toggleTheme(){
 }
 
 /* ---- notifications ---- */
-function myNotifs(){ return store.notifs.filter(n => n.audience==='all' ||
-  (Array.isArray(n.audience) ? n.audience.includes(store.session.role) : n.audience===store.session.role)); }
+function notifMatchesMe(n){
+  return (n.forUnit && n.forUnit===myUnit()) || n.audience==='all' ||
+    (Array.isArray(n.audience) ? n.audience.includes(store.session.role) : n.audience===store.session.role);
+}
+function myNotifs(){ return store.notifs.filter(notifMatchesMe); }
 function unreadCount(){ return myNotifs().filter(n=>!n.read).length; }
 let notifOpen = false;
 function toggleNotifs(e){
@@ -746,8 +749,7 @@ function toggleNotifRead(id){
 }
 function markAllNotifsRead(){ myNotifs().forEach(n=>n.read=true); openNotifs(); paintBell(); }
 function clearNotifs(){
-  store.notifs = store.notifs.filter(n => !(n.audience==='all' ||
-    (Array.isArray(n.audience) ? n.audience.includes(store.session.role) : n.audience===store.session.role)));
+  store.notifs = store.notifs.filter(n => !notifMatchesMe(n));
   openNotifs(); paintBell();
 }
 function paintBell(){
@@ -1550,6 +1552,7 @@ function staffAvailabilityLine(){
       '<span class="meta">'+online.map(a=>esc(a.name)+' ('+esc(ROLE_LABEL(a.role))+')').join(', ')+'</span>'
     : '<span class="tag t-grey">● No staff online right now</span> <span class="meta">Usually replies within a few hours.</span>';
 }
+function newReplyTag(item){ return item.residentUnread ? ' <span class="newpill">New reply</span>' : ''; }
 function handledByTag(item){
   return item.handledBy ? '<span class="tag t-slate">→ '+esc(item.handledBy.name)+'</span>' : '<span class="tag t-grey">Unassigned</span>';
 }
@@ -1566,6 +1569,8 @@ function claimLine(item){
 }
 function openChat(kind, id){
   chatCtx = { kind, id };
+  const item = findMsgItem(kind, id);
+  if(!isStaffSide() && item.residentUnread){ item.residentUnread = false; render(); }
   closeModal(); modalOpen = true;
   $('#modalHost').innerHTML = chatModalHTML();
   const scrim = $('#mScrim');
@@ -1603,9 +1608,12 @@ function sendChatMessage(){
   (item.replies = item.replies || []).push({ by:store.session.name, role:roleLabel, at:new Date(), text:val });
   if(staffSide && !item.handledBy) item.handledBy = { name:store.session.name, role:roleLabel };
   else if(!staffSide) autoAssign(item);
+  if(staffSide) item.residentUnread = true; else item.residentUnread = false;
   commit(
     staffSide ? roleLabel+' replied to unit '+item.unit+' on "'+subj+'".' : 'Unit '+myUnit()+' messaged the Board and Admin about "'+subj+'".',
-    { title: staffSide ? 'Reply posted' : 'Message sent', audience:['admin','board'] }
+    staffSide
+      ? { title:'Reply posted', audience:['admin','board'], forUnit:item.unit }
+      : { title:'Message sent', audience:['admin','board'] }
   );
   input.value='';
   refreshChat();
@@ -1730,7 +1738,7 @@ function supportView(admin){
   const inner = {
     tickets(){
       return sectionCard(admin?'Support tickets':'My tickets', mine.length ? '<ul class="list">' + mine.map(x =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(x.subject)+(admin?'':newReplyTag(x))+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(x.channel)+'</span><span class="tag '+(x.priority==='High'?'t-rose':'t-grey')+'">'+esc(x.priority)+'</span>' +
         (admin?'<span class="mono">'+esc(x.unit)+'</span>·<span>'+esc(x.by)+'</span>·':'')+'<span>'+ago(x.at)+'</span></div>' +
         '<div class="body">'+esc(x.detail)+'</div>' + threadHTML(x) +
@@ -1872,7 +1880,7 @@ const HOME = {
     return head('My requests','Status changes made by the admin office appear here as they happen.',
       '<button class="btn btn-primary" style="width:auto" onclick="requestForm()">New request</button>') +
     (mine.length ? '<div class="card"><ul class="list">' + mine.map(r =>
-      '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
+      '<li><div class="row"><div class="grow"><div class="ttl">'+esc(r.title)+newReplyTag(r)+'</div>' +
       '<div class="meta"><span class="tag t-grey">'+esc(r.type)+'</span><span>Filed '+ago(r.at)+'</span>' +
       (r.assignee?'<span>Assigned to '+esc(r.assignee)+'</span>':'')+'</div>' +
       '<div class="body">'+esc(r.detail)+'</div>' + threadHTML(r) +
@@ -1914,7 +1922,7 @@ const HOME = {
     '<div class="grid g-2">' +
       '<div class="card span-2"><div class="card-head"><h3>My filings</h3></div>' +
       (mine.length ? '<ul class="list">' + mine.map(c =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(c.title)+newReplyTag(c)+'</div>' +
         '<div class="meta"><span class="mono">'+esc(c.ref)+'</span><span class="tag t-grey">'+esc(c.category)+'</span>' +
         '<span>Against '+esc(c.against)+'</span>·<span>Filed '+ago(c.filedAt)+'</span></div>' +
         '<div class="body">'+esc(c.detail)+'</div>' +
@@ -1977,7 +1985,7 @@ const HOME = {
     '<div class="grid g-2">' +
       '<div class="card span-2"><div class="card-head"><h3>My threads</h3></div>' +
       (mine.length ? '<ul class="list">' + mine.map(n =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newReplyTag(n)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
         (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
@@ -1985,7 +1993,7 @@ const HOME = {
         : empty('No concerns raised','Ask about a facility, suggest an improvement, or send feedback on a board decision.')) + '</div>' +
       sectionCard('What others have raised','<ul class="list">' + store.concerns.filter(c=>c.unit!==myUnit()).map(n =>
         '<li><div class="ttl">'+esc(n.subject)+'</div><div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span>' +
-        '<span>A neighbouring household</span>·<span>'+esc(n.status)+'</span></div></li>').join('') +
+        '<span>A neighbouring household</span>·<span class="tag '+(n.replies&&n.replies.length?'t-emerald':'t-amber')+'">'+(n.replies&&n.replies.length?'Replied':'Awaiting reply')+'</span></div></li>').join('') +
         (store.concerns.filter(c=>c.unit!==myUnit()).length?'':'<li>'+empty('Nothing yet','Community threads show up here.')+'</li>') + '</ul>') +
       sectionCard('Complaint or concern?','<div class="card-pad">' +
         '<div style="padding:9px 0;border-bottom:1px dashed var(--line)"><strong style="font-size:14px">File a complaint</strong>' +
@@ -2102,7 +2110,7 @@ const RENTER = {
     return head('Concerns','Questions and feedback for the board. Complaints against a household must be filed by the owner of record.',
       '<button class="btn btn-primary" style="width:auto" onclick="concernForm()">Raise a concern</button>') +
       sectionCard('My threads', mine.length ? '<ul class="list">' + mine.map(n =>
-        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+'</div>' +
+        '<li><div class="row"><div class="grow"><div class="ttl">'+esc(n.subject)+newReplyTag(n)+'</div>' +
         '<div class="meta"><span class="tag t-grey">'+esc(n.topic)+'</span><span>'+ago(n.at)+'</span></div>' +
         '<div class="body">'+esc(n.message)+'</div>' + threadHTML(n) +
         (n.status!=='Closed' ? '<button class="btn btn-ghost btn-sm" style="margin-top:11px" onclick="openChat(\'concern\',\''+n.id+'\')">Message Board &amp; Admin</button>' : '') +
