@@ -188,7 +188,8 @@ html[data-theme="dark"] .syncrail.flash{animation:railFlashDark 1.3s ease}
 .rolebadge.board i{background:#6B4BC4}
 .rolebadge.renter{background:var(--paper);color:var(--ink-2);border-color:var(--line)}
 .rolebadge.renter i{background:var(--ink-3)}
-.avatar{width:34px;height:34px;border-radius:50%;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid #DADFF8}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid #DADFF8;overflow:hidden;flex:none}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .layout{display:grid;grid-template-columns:1fr}
 @media(min-width:1024px){.layout{grid-template-columns:var(--sidebar) 1fr}}
 .sidebar{position:fixed;inset:0 auto 0 0;width:286px;background:#fff;border-right:1px solid var(--line);padding:16px 12px;z-index:60;transform:translateX(-102%);transition:transform .26s cubic-bezier(.2,.7,.3,1);display:flex;flex-direction:column;gap:2px;overflow-y:auto}
@@ -860,8 +861,9 @@ $('#oFacebook').addEventListener('click', e => oauth(e.currentTarget,'Facebook',
 
 function enter(acct, method){
   acct.lastSeen = new Date();
+  if(!acct.avatar){ const saved = loadAvatar(acct.id); if(saved) acct.avatar = saved; }
   store.session = { authed:true, method, accountId:acct.id, name:acct.name, email:acct.email,
-                    phone:acct.phone, unit:acct.unit, role:acct.role };
+                    phone:acct.phone, unit:acct.unit, role:acct.role, avatar:acct.avatar||null };
   store.view = isAdmin() ? 'overview' : 'feed';
   store.tab = {};
   $('#auth').classList.add('hide'); $('#app').classList.remove('hide');
@@ -998,7 +1000,7 @@ function render(){
   if(!store.session.authed) return;
   const s = store.session;
   const myAcct = store.accounts.find(a=>a.id===s.accountId); if(myAcct) myAcct.lastSeen = new Date();
-  $('#avatar').textContent = initials(s.name);
+  $('#avatar').innerHTML = s.avatar ? '<img src="'+s.avatar+'" alt="">' : esc(initials(s.name));
   $('#avatar').title = s.name + ' · ' + s.email;
   $('#brandName').textContent = store.settings.assocName.replace(/^HOA\s*[—-]\s*/,'');
   const badge = $('#roleBadge');
@@ -1819,6 +1821,14 @@ function accountSettings(){
   const s = store.session;
   return '<div class="grid g-2">' +
     sectionCard('Profile','<div class="card-pad">' +
+      '<div class="row" style="align-items:center;gap:14px;margin-bottom:18px">' +
+        '<div class="avatar" style="width:60px;height:60px;font-size:20px">'+(s.avatar?'<img src="'+s.avatar+'" alt="">':esc(initials(s.name)))+'</div>' +
+        '<div class="btn-row" style="gap:8px">' +
+          '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'avatarFile\').click()">Change photo</button>' +
+          (s.avatar ? '<button class="btn btn-ghost btn-sm" onclick="removeAvatar()">Remove</button>' : '') +
+        '</div>' +
+        '<input type="file" id="avatarFile" accept="image/*" class="hide" onchange="handleAvatarFile(event)">' +
+      '</div>' +
       '<label class="fld"><span>Full name</span><input class="input" id="pf_name" value="'+esc(s.name)+'"></label>' +
       '<label class="fld"><span>Email</span><input class="input" id="pf_email" value="'+esc(s.email)+'"></label>' +
       '<label class="fld"><span>Mobile number</span><input class="input" id="pf_phone" value="'+esc(s.phone||'')+'"></label>' +
@@ -2914,6 +2924,50 @@ function saveProfile(){
   const acct = store.accounts.find(a=>a.id===store.session.accountId);
   if(acct) Object.assign(acct, { name:store.session.name, email:store.session.email, phone:store.session.phone });
   commit('Profile updated for '+store.session.name+'.',{title:'Profile saved'});
+}
+/* ---- profile photo: stored as a data URL, kept in this browser via localStorage ---- */
+function avatarKey(id){ return 'hoa_avatar_'+id; }
+function loadAvatar(id){ try{ return localStorage.getItem(avatarKey(id)); }catch(e){ return null; } }
+function saveAvatarToStorage(id, dataUrl){
+  try{ dataUrl ? localStorage.setItem(avatarKey(id), dataUrl) : localStorage.removeItem(avatarKey(id)); }catch(e){}
+}
+function handleAvatarFile(e){
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ''; /* allow re-selecting the same file later */
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('info','Not an image','Choose a photo file — JPG, PNG, etc.'); return; }
+  if(file.size > 8*1024*1024){ toast('info','Too large','Pick a photo under 8 MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 240, canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const scale = Math.max(size/img.width, size/img.height);
+      const w = img.width*scale, h = img.height*scale;
+      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
+      setAvatar(canvas.toDataURL('image/jpeg', 0.86));
+    };
+    img.onerror = () => toast('info','Could not read that image','Try a different file.');
+    img.src = reader.result;
+  };
+  reader.onerror = () => toast('info','Could not read that file','Try again.');
+  reader.readAsDataURL(file);
+}
+function setAvatar(dataUrl){
+  store.session.avatar = dataUrl;
+  const acct = store.accounts.find(a=>a.id===store.session.accountId);
+  if(acct) acct.avatar = dataUrl;
+  saveAvatarToStorage(store.session.accountId, dataUrl);
+  commit('Profile photo updated.',{title:'Photo updated'});
+}
+function removeAvatar(){
+  store.session.avatar = null;
+  const acct = store.accounts.find(a=>a.id===store.session.accountId);
+  if(acct) acct.avatar = null;
+  saveAvatarToStorage(store.session.accountId, null);
+  commit('Profile photo removed.',{title:'Photo removed'});
 }
 function saveAssoc(){
   store.settings.assocName = $('#as_name').value.trim() || store.settings.assocName;
