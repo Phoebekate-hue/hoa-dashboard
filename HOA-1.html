@@ -189,6 +189,9 @@ html[data-theme="dark"] .syncrail.flash{animation:railFlashDark 1.3s ease}
 .rolebadge.renter{background:var(--paper);color:var(--ink-2);border-color:var(--line)}
 .rolebadge.renter i{background:var(--ink-3)}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid #DADFF8;overflow:hidden;flex:none}
+button.avatar{padding:0;font:inherit;cursor:pointer;transition:.15s}
+button.avatar:hover{filter:brightness(0.94)}
+button.avatar:focus-visible{outline:2.5px solid var(--slate);outline-offset:2px}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .layout{display:grid;grid-template-columns:1fr}
 @media(min-width:1024px){.layout{grid-template-columns:var(--sidebar) 1fr}}
@@ -408,7 +411,7 @@ html[data-theme="dark"] .bubble.mine{color:#0E121C}
       </button>
       <span class="notif-dot hide" id="notifDot">0</span>
     </div>
-    <div class="avatar" id="avatar" title=""></div>
+    <button type="button" class="avatar" id="avatar" title="" onclick="go('settings')" aria-label="Your profile and settings"></button>
     <button class="icon-btn" onclick="signOut()" aria-label="Sign out" title="Sign out">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
     </button>
@@ -1001,7 +1004,7 @@ function render(){
   const s = store.session;
   const myAcct = store.accounts.find(a=>a.id===s.accountId); if(myAcct) myAcct.lastSeen = new Date();
   $('#avatar').innerHTML = s.avatar ? '<img src="'+s.avatar+'" alt="">' : esc(initials(s.name));
-  $('#avatar').title = s.name + ' · ' + s.email;
+  $('#avatar').title = s.name + ' · ' + s.email + ' · Settings';
   $('#brandName').textContent = store.settings.assocName.replace(/^HOA\s*[—-]\s*/,'');
   const badge = $('#roleBadge');
   badge.className = 'rolebadge ' + s.role;
