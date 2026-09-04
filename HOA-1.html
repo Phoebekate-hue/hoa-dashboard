@@ -109,7 +109,7 @@ html[data-theme="dark"] .topbar{background:rgba(22,27,39,.92)}
 html[data-theme="dark"] .btn-ghost,html[data-theme="dark"] .icon-btn,html[data-theme="dark"] .oauth,
 html[data-theme="dark"] .input,html[data-theme="dark"] .card,html[data-theme="dark"] .sidebar,
 html[data-theme="dark"] .tabs button,html[data-theme="dark"] .chip,html[data-theme="dark"] .modal,
-html[data-theme="dark"] .ballot,html[data-theme="dark"] .notif-panel{background:var(--surface);color:var(--ink)}
+html[data-theme="dark"] .ballot,html[data-theme="dark"] .notif-panel,html[data-theme="dark"] .avail-panel{background:var(--surface);color:var(--ink)}
 html[data-theme="dark"] .btn-ghost:hover,html[data-theme="dark"] .icon-btn:hover,html[data-theme="dark"] .oauth:hover{background:#1D2331}
 html[data-theme="dark"] .auth-panel{background:var(--surface)}
 html[data-theme="dark"] .tabs button[aria-selected="true"]{background:var(--slate);color:#0E121C;border-color:var(--slate)}
@@ -139,6 +139,19 @@ html[data-theme="dark"] .syncrail.flash{animation:railFlashDark 1.3s ease}
 .notif-item .nt{font-weight:650;font-size:13.5px}
 .notif-item .nm{font-size:13px;color:var(--ink-2);margin-top:2px}
 .notif-item .na{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* availability status */
+.avail-dot{width:12px;height:12px;border-radius:50%;background:var(--emerald);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.avail-panel{position:fixed;top:60px;right:12px;width:min(280px, calc(100vw - 24px));background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 20px 44px -16px rgba(16,23,37,.35);z-index:70;animation:sheetUp .2s cubic-bezier(.2,.7,.3,1);overflow:hidden}
+.avail-panel .nh{padding:13px 15px;border-bottom:1px solid var(--line)}
+.avail-panel .nh h4{font-size:15px;font-weight:700}
+.avail-panel .nh p{margin:2px 0 0;font-size:12.5px;color:var(--ink-2)}
+.avail-opt{width:100%;display:flex;align-items:center;gap:11px;padding:11px 15px;border:0;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:.13s}
+.avail-opt:hover{background:var(--paper)}
+.avail-opt .avail-dot{margin-top:2px;flex:none}
+.avail-opt .txt{flex:1}
+.avail-opt .lbl{font-weight:650;font-size:13.5px;display:block}
+.avail-opt .desc{font-size:12px;color:var(--ink-2);margin-top:1px}
 .notif-item .unreadpill{background:var(--slate-tint);color:var(--slate-dk);border-radius:20px;padding:1px 7px;font-weight:700;letter-spacing:.02em}
 .notif-item .openpill{background:var(--emerald-tint);color:var(--emerald);border-radius:20px;padding:1px 7px;font-weight:700;letter-spacing:.02em}
 .notif-item.read .nt{font-weight:600;color:var(--ink-2)}
@@ -401,6 +414,11 @@ html[data-theme="dark"] .bubble.mine{color:#0E121C}
     <div class="spacer"></div>
     <span class="rolebadge" id="roleBadge"></span>
     <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" aria-label="Switch to dark mode" title="Dark mode"></button>
+    <div class="bellwrap hide" id="availWrap">
+      <button class="icon-btn" id="availBtn" onclick="toggleAvailMenu(event)" aria-label="Set your availability" aria-expanded="false" title="Availability">
+        <span class="avail-dot" id="availDot"></span>
+      </button>
+    </div>
     <div class="bellwrap">
       <button class="icon-btn" id="msgBtn" onclick="msgBtnClick()" aria-label="Message Admin/Staff" title="Message Admin/Staff">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.2A8 8 0 1 1 21 12z"/></svg>
@@ -435,6 +453,7 @@ html[data-theme="dark"] .bubble.mine{color:#0E121C}
 
 <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
 <div id="notifHost"></div>
+<div id="availHost"></div>
 <div id="modalHost"></div>
 <div id="toasts" aria-live="polite"></div>
 
@@ -815,7 +834,53 @@ function paintMsgBtn(){
 }
 function isStaffSide(){ return store.session.role==='admin' || store.session.role==='board'; }
 function msgBtnClick(){ isStaffSide() ? go('messages') : quickMessageAdmin(); }
-document.addEventListener('click', () => { if(notifOpen) closeNotifs(); });
+
+/* ---- availability status: Available / At lunch / On a break / Not available — Admin only, beside dark mode ---- */
+const AVAIL = {
+  available:{ label:'Available',      desc:'New chats can be assigned to you.',              v:'var(--emerald)' },
+  lunch:    { label:'At lunch',        desc:'Paused — new chats will wait for you.',           v:'var(--amber)' },
+  break:    { label:'On a break',      desc:'Paused — new chats will wait for you.',           v:'var(--amber)' },
+  away:     { label:'Not available',   desc:'Marked away — nothing new is routed to you.',     v:'var(--rose)' }
+};
+let availOpen = false;
+function paintAvail(){
+  const dot = $('#availDot'); if(!dot) return;
+  const a = AVAIL[store.session.availability] || AVAIL.available;
+  dot.style.background = a.v;
+  const btn = $('#availBtn'); if(btn) btn.title = 'Availability: ' + a.label;
+}
+function toggleAvailMenu(e){ if(e) e.stopPropagation(); availOpen ? closeAvailMenu() : openAvailMenu(); }
+function openAvailMenu(){
+  closeNotifs();
+  availOpen = true;
+  $('#availBtn').setAttribute('aria-expanded','true');
+  const cur = store.session.availability || 'available';
+  $('#availHost').innerHTML = '<div class="avail-panel" id="availPanel" role="dialog" aria-label="Set your availability" onclick="event.stopPropagation()">' +
+    '<div class="nh"><h4>Your availability</h4><p>Shown when residents message the office, and used to route new chats to whoever is available.</p></div>' +
+    Object.keys(AVAIL).map(k => {
+      const a = AVAIL[k];
+      return '<button type="button" class="avail-opt" onclick="setAvailability(\''+k+'\')">' +
+        '<span class="avail-dot" style="background:'+a.v+'"></span>' +
+        '<span class="txt"><span class="lbl">'+esc(a.label)+(k===cur?' <span class="meta">· current</span>':'')+'</span>' +
+        '<span class="desc">'+esc(a.desc)+'</span></span></button>';
+    }).join('') +
+  '</div>';
+  const panel = $('#availPanel'), tb = document.querySelector('.topbar');
+  if(panel && tb) panel.style.top = (tb.getBoundingClientRect().bottom + 6) + 'px';
+}
+function closeAvailMenu(){
+  if(!availOpen) return;
+  availOpen = false; $('#availHost').innerHTML = '';
+  const b = $('#availBtn'); if(b) b.setAttribute('aria-expanded','false');
+}
+function setAvailability(key){
+  store.session.availability = key;
+  const acct = store.accounts.find(a=>a.id===store.session.accountId);
+  if(acct) acct.availability = key;
+  closeAvailMenu(); paintAvail();
+  toast('ok','Status updated', AVAIL[key].label+' — '+AVAIL[key].desc);
+}
+document.addEventListener('click', () => { if(notifOpen) closeNotifs(); if(availOpen) closeAvailMenu(); });
 function toast(kind, title, body){
   const el = document.createElement('div');
   el.className = 'toast ' + (kind === 'info' ? 'info' : '');
@@ -867,8 +932,9 @@ $('#oFacebook').addEventListener('click', e => oauth(e.currentTarget,'Facebook',
 function enter(acct, method){
   acct.lastSeen = new Date();
   if(!acct.avatar){ const saved = loadAvatar(acct.id); if(saved) acct.avatar = saved; }
+  acct.availability = 'available'; /* every fresh sign-in starts Available; they set lunch/break/away themselves after */
   store.session = { authed:true, method, accountId:acct.id, name:acct.name, email:acct.email,
-                    phone:acct.phone, unit:acct.unit, role:acct.role, avatar:acct.avatar||null };
+                    phone:acct.phone, unit:acct.unit, role:acct.role, avatar:acct.avatar||null, availability:acct.availability };
   store.view = isAdmin() ? 'overview' : 'feed';
   store.tab = {};
   $('#auth').classList.add('hide'); $('#app').classList.remove('hide');
@@ -996,7 +1062,7 @@ function tabs(section, items, dflt){
 function openDrawer(){ $('#sidebar').classList.add('open'); $('#scrim').classList.add('show'); $('#menuBtn').setAttribute('aria-expanded','true'); }
 function closeDrawer(){ $('#sidebar').classList.remove('open'); $('#scrim').classList.remove('show'); $('#menuBtn').setAttribute('aria-expanded','false'); }
 $('#menuBtn').addEventListener('click', () => $('#sidebar').classList.contains('open') ? closeDrawer() : openDrawer());
-document.addEventListener('keydown', e => { if(e.key==='Escape'){ closeDrawer(); closeModal(); closeNotifs(); } });
+document.addEventListener('keydown', e => { if(e.key==='Escape'){ closeDrawer(); closeModal(); closeNotifs(); closeAvailMenu(); } });
 
 /* ============================================================
    RENDER
@@ -1012,7 +1078,8 @@ function render(){
   badge.className = 'rolebadge ' + s.role;
   badge.innerHTML = '<i></i>' + esc(ROLE_LABEL(s.role)) +
     (s.role==='homeowner'||s.role==='renter' ? '<span class="unit"> · '+esc(s.unit)+'</span>' : '');
-  paintBell(); applyTheme(); paintMsgBtn();
+  paintBell(); applyTheme(); paintMsgBtn(); paintAvail();
+  const availWrap = $('#availWrap'); if(availWrap) availWrap.classList.toggle('hide', s.role !== 'admin');
 
   $('#nav').innerHTML = NAV[s.role].map(group =>
     '<p class="navlabel">'+esc(group.g)+'</p>' + group.items.map(it => {
@@ -1598,7 +1665,10 @@ function chatBubble(m){
     '<div class="when">'+ago(m.at)+'</div></div>';
 }
 function staffAccounts(){ return store.accounts.filter(a => (a.role==='admin'||a.role==='board') && a.status==='Active'); }
-function staffOnline(){ return staffAccounts().filter(a => a.lastSeen && (Date.now()-new Date(a.lastSeen)) < STAFF_AWAY_MS); }
+function staffOnline(){
+  return staffAccounts().filter(a => a.lastSeen && (Date.now()-new Date(a.lastSeen)) < STAFF_AWAY_MS &&
+    (a.availability||'available')==='available');
+}
 function staffAvailabilityLine(){
   const staff = staffAccounts(), online = staffOnline();
   if(!staff.length) return '';
