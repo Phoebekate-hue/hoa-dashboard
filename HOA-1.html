@@ -303,7 +303,9 @@ tr:last-child td{border-bottom:0}
 .ballot{border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;gap:13px;align-items:flex-start;cursor:pointer;background:#fff;width:100%;text-align:left;transition:.15s;margin-bottom:10px}
 .ballot:hover{border-color:var(--slate);background:#FCFCFF}
 .ballot.chosen{border-color:var(--emerald);background:var(--emerald-tint)}
-.ballot .ph{width:44px;height:44px;border-radius:12px;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;flex:none;font-family:var(--display)}
+.ballot .ph{width:44px;height:44px;border-radius:12px;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;flex:none;font-family:var(--display);overflow:hidden}
+.ph img,.cph img{width:100%;height:100%;object-fit:cover;display:block}
+.cph{width:36px;height:36px;border-radius:10px;background:var(--slate-tint);color:var(--slate-dk);display:grid;place-items:center;font-weight:700;flex:none;font-size:13px;overflow:hidden}
 .modal-scrim{position:fixed;inset:0;background:rgba(16,23,37,.5);z-index:80;display:grid;place-items:end center}
 @media(min-width:640px){.modal-scrim{place-items:center;padding:22px}}
 .modal{background:#fff;width:100%;max-width:540px;border-radius:18px 18px 0 0;padding:20px;max-height:92dvh;overflow-y:auto;animation:sheetUp .26s cubic-bezier(.2,.7,.3,1)}
@@ -618,12 +620,12 @@ const store = {
     status:'Open', eligible:412,
     positions:[
       { id:'pres', label:'President', candidates:[
-        { id:'pres-a', name:'Arnel Bautista', unit:'A-11', pitch:'Three terms as treasurer. Wants a published monthly ledger and a funded reserve.' },
-        { id:'pres-b', name:'Liza Manalo', unit:'C-03', pitch:'Retired city engineer. Priority is drainage across Phases 2 and 3.' }
+        { id:'pres-a', name:'Arnel Bautista', unit:'A-11', photo:null, credentials:'Three consecutive terms as association treasurer. Certified public accountant.', pitch:'Three terms as treasurer. Wants a published monthly ledger and a funded reserve.' },
+        { id:'pres-b', name:'Liza Manalo', unit:'C-03', photo:null, credentials:'Retired city engineer, 22 years with the DPWH drainage division.', pitch:'Retired city engineer. Priority is drainage across Phases 2 and 3.' }
       ]},
       { id:'treas', label:'Treasurer', candidates:[
-        { id:'treas-a', name:'Ferdie Lim', unit:'D-07', pitch:'CPA. Proposes quarterly audited statements open to any homeowner.' },
-        { id:'treas-b', name:'Jonna Reyes', unit:'C-21', pitch:'Wants an installment plan for households behind on dues.' }
+        { id:'treas-a', name:'Ferdie Lim', unit:'D-07', photo:null, credentials:'CPA, currently an internal auditor at a listed company.', pitch:'CPA. Proposes quarterly audited statements open to any homeowner.' },
+        { id:'treas-b', name:'Jonna Reyes', unit:'C-21', photo:null, credentials:'Small business owner, 6 years managing a cooperative’s books.', pitch:'Wants an installment plan for households behind on dues.' }
       ]}
     ],
     votes:{ 'pres-a':147, 'pres-b':121, 'treas-a':160, 'treas-b':108 },
@@ -1375,6 +1377,19 @@ const ADMIN = {
               '<div class="kv"><span>Turnout</span><b>'+Math.round(e.ballotsCast/e.eligible*100)+'%</b></div>' +
               '<div class="progress" style="margin-top:12px"><i style="width:'+Math.round(e.ballotsCast/e.eligible*100)+'%"></i></div>' +
             '</div></div>' +
+          '<div class="card span-2"><div class="card-head"><h3>Candidates</h3></div>' +
+            (e.positions.some(p=>p.candidates.length) ? '<ul class="list">' +
+              e.positions.flatMap(p => p.candidates.map(c =>
+                '<li><div class="row"><span class="cph" style="width:44px;height:44px;font-size:15px">'+
+                  (c.photo?'<img src="'+c.photo+'" alt="">':esc(initials(c.name)))+'</span>' +
+                '<div class="grow"><div class="ttl">'+esc(c.name)+'</div>' +
+                '<div class="meta"><span class="tag t-grey">'+esc(p.label)+'</span><span class="mono">'+esc(c.unit)+'</span></div>' +
+                (c.credentials?'<div class="meta" style="display:block;margin-top:3px"><strong>Credentials:</strong> '+esc(c.credentials)+'</div>':'') +
+                '<div class="body" style="margin-top:3px">'+esc(c.pitch)+'</div></div>' +
+                '<button class="btn btn-danger btn-sm" onclick="removeCandidate(\''+p.id+'\',\''+c.id+'\')">Remove</button>' +
+                '</div></li>')).join('') + '</ul>'
+              : empty('No candidates yet','Add one for each open position.')) +
+          '</div>' +
           '<div class="card span-2"><div class="card-head"><h3>Tally</h3></div><div class="card-pad">'+tallyBlock(false)+'</div></div>' +
         '</div>';
       },
@@ -1542,6 +1557,7 @@ function tallyBlock(compact){
       p.candidates.map(c => {
         const v = e.votes[c.id]||0, pct = Math.round(v/total*100);
         return '<div style="margin-bottom:10px"><div class="row" style="align-items:center;margin-bottom:5px">' +
+          (compact?'':'<span class="cph">'+(c.photo?'<img src="'+c.photo+'" alt="">':esc(initials(c.name)))+'</span>') +
           '<div class="grow"><strong style="font-size:14px">'+esc(c.name)+'</strong>' +
           (compact?'':'<span class="meta mono"> · '+esc(c.unit)+'</span>')+'</div>' +
           '<span class="mono" style="font-size:12.5px">'+v+' · '+pct+'%</span></div>' +
@@ -2012,10 +2028,11 @@ const HOME = {
       p.candidates.map(c => {
         const chosen = e.myBallot[p.id]===c.id;
         return '<button class="ballot'+(chosen?' chosen':'')+'" onclick="pick(\''+p.id+'\',\''+c.id+'\')">' +
-          '<span class="ph">'+esc(initials(c.name))+'</span><span style="flex:1">' +
+          '<span class="ph">'+(c.photo?'<img src="'+c.photo+'" alt="">':esc(initials(c.name)))+'</span><span style="flex:1">' +
           '<span class="ttl" style="display:block">'+esc(c.name)+(chosen?' <span class="tag t-emerald">Selected</span>':'')+'</span>' +
           '<span class="meta">Unit '+esc(c.unit)+'</span>' +
-          '<span class="body" style="display:block">'+esc(c.pitch)+'</span></span></button>';
+          (c.credentials?'<span class="meta" style="display:block;margin-top:3px"><strong>Credentials:</strong> '+esc(c.credentials)+'</span>':'') +
+          '<span class="body" style="display:block;margin-top:3px">'+esc(c.pitch)+'</span></span></button>';
       }).join('') + '</div></div>').join('') +
     '<div class="btn-row" style="margin-bottom:18px">' +
       '<button class="btn btn-primary" style="width:auto" onclick="submitBallot()">'+(voted?'Update my ballot':'Submit ballot')+'</button>' +
@@ -2836,21 +2853,66 @@ function withdrawBallot(){
 }
 function closeElection(){ store.election.status='Closed'; commit('Ballot closed — '+store.election.ballotsCast+' votes counted.',{title:'Election closed'}); }
 function reopenElection(){ store.election.status='Open'; commit('Ballot reopened for '+store.election.title+'.',{title:'Election reopened'}); }
+let pendingCandidatePhoto = null;
+function toggleNewPositionField(v){
+  const wrap = document.getElementById('f_newpos_wrap'); if(wrap) wrap.classList.toggle('hide', v!=='__new__');
+}
+function handleCandidatePhotoFile(e){
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  fileToSquareDataUrl(file, 200, dataUrl => {
+    pendingCandidatePhoto = dataUrl;
+    const prev = document.getElementById('candPhotoPreview');
+    if(prev) prev.innerHTML = '<img src="'+dataUrl+'" alt="">';
+  }, msg => toast('info','Could not use that photo',msg));
+}
 function candidateForm(){
   const e = store.election;
-  modal('Add a candidate','Candidates appear on every homeowner ballot.',
-    '<label class="fld"><span>Position</span><select class="input" id="f_pos">'+e.positions.map(p=>'<option value="'+p.id+'">'+esc(p.label)+'</option>').join('')+'</select></label>' +
+  pendingCandidatePhoto = null;
+  modal('Add a candidate','Candidates appear on every homeowner ballot, with their photo and credentials.',
+    '<div class="row" style="align-items:center;gap:12px;margin-bottom:14px">' +
+      '<div class="avatar" id="candPhotoPreview" style="width:56px;height:56px;font-size:20px">?</div>' +
+      '<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'candPhotoFile\').click()">Add photo</button>' +
+      '<input type="file" id="candPhotoFile" accept="image/*" class="hide" onchange="handleCandidatePhotoFile(event)">' +
+    '</div>' +
+    '<label class="fld"><span>Position</span><select class="input" id="f_pos" onchange="toggleNewPositionField(this.value)">' +
+      e.positions.map(p=>'<option value="'+p.id+'">'+esc(p.label)+'</option>').join('') +
+      '<option value="__new__">+ Add a new position…</option></select></label>' +
+    '<div id="f_newpos_wrap" class="hide"><label class="fld"><span>New position name</span><input class="input" id="f_newpos" placeholder="Secretary, Auditor, Board Director…"></label></div>' +
     '<div class="grid g-2" style="gap:0 12px">' +
       '<label class="fld"><span>Name</span><input class="input" id="f_n" placeholder="Full name"></label>' +
       '<label class="fld"><span>Unit</span><input class="input" id="f_u" placeholder="A-11"></label></div>' +
+    '<label class="fld"><span>Credentials</span><textarea class="input" id="f_cred" placeholder="Background, experience, relevant qualifications homeowners should know."></textarea></label>' +
     '<label class="fld"><span>Platform</span><textarea class="input" id="f_p" placeholder="One or two lines homeowners will read on the ballot."></textarea></label>',
     'Add candidate', () => {
       const n=$('#f_n').value.trim(); if(!n){ toast('info','Add a name','Candidates need a name.'); return false; }
-      const pos = e.positions.find(p=>p.id===$('#f_pos').value);
+      let pos;
+      if($('#f_pos').value === '__new__'){
+        const label = $('#f_newpos').value.trim();
+        if(!label){ toast('info','Name the position','Give the new position a title.'); return false; }
+        pos = { id:'pos-'+uid(), label, candidates:[] };
+        e.positions.push(pos);
+      } else {
+        pos = e.positions.find(p=>p.id===$('#f_pos').value);
+      }
       const id = pos.id+'-'+uid();
-      pos.candidates.push({ id, name:n, unit:$('#f_u').value.trim()||'—', pitch:$('#f_p').value.trim()||'No platform submitted.' });
+      pos.candidates.push({ id, name:n, unit:$('#f_u').value.trim()||'—', photo:pendingCandidatePhoto,
+        credentials:$('#f_cred').value.trim()||'No credentials submitted.', pitch:$('#f_p').value.trim()||'No platform submitted.' });
       e.votes[id]=0;
+      pendingCandidatePhoto = null;
       commit(n+' added to the ballot for '+pos.label+'.',{title:'Candidate added'}); return true; });
+}
+function removeCandidate(posId, candId){
+  const pos = store.election.positions.find(p=>p.id===posId); if(!pos) return;
+  const c = pos.candidates.find(x=>x.id===candId); if(!c) return;
+  modal('Remove this candidate?','They are pulled from the ballot immediately. Votes already cast for them are dropped from the tally.',
+    '<div class="card card-pad" style="background:var(--paper)"><div class="ttl">'+esc(c.name)+'</div><div class="meta">'+esc(pos.label)+' · Unit '+esc(c.unit)+'</div></div>',
+    'Remove candidate', () => {
+      pos.candidates = pos.candidates.filter(x=>x.id!==candId);
+      delete store.election.votes[candId];
+      commit(c.name+' removed from the ballot for '+pos.label+'.',{title:'Candidate removed'}); return true;
+    }, true);
 }
 
 /* reports */
@@ -2934,29 +2996,33 @@ function loadAvatar(id){ try{ return localStorage.getItem(avatarKey(id)); }catch
 function saveAvatarToStorage(id, dataUrl){
   try{ dataUrl ? localStorage.setItem(avatarKey(id), dataUrl) : localStorage.removeItem(avatarKey(id)); }catch(e){}
 }
-function handleAvatarFile(e){
-  const file = e.target.files && e.target.files[0];
-  e.target.value = ''; /* allow re-selecting the same file later */
-  if(!file) return;
-  if(!file.type.startsWith('image/')){ toast('info','Not an image','Choose a photo file — JPG, PNG, etc.'); return; }
-  if(file.size > 8*1024*1024){ toast('info','Too large','Pick a photo under 8 MB.'); return; }
+/* shared: read an image file, crop/scale it to a size x size square, hand back a JPEG data URL */
+function fileToSquareDataUrl(file, size, onDone, onError){
+  if(!file.type.startsWith('image/')){ onError('Choose a photo file — JPG, PNG, etc.'); return; }
+  if(file.size > 8*1024*1024){ onError('Pick a photo under 8 MB.'); return; }
   const reader = new FileReader();
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
-      const size = 240, canvas = document.createElement('canvas');
+      const canvas = document.createElement('canvas');
       canvas.width = size; canvas.height = size;
       const ctx = canvas.getContext('2d');
       const scale = Math.max(size/img.width, size/img.height);
       const w = img.width*scale, h = img.height*scale;
       ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
-      setAvatar(canvas.toDataURL('image/jpeg', 0.86));
+      onDone(canvas.toDataURL('image/jpeg', 0.86));
     };
-    img.onerror = () => toast('info','Could not read that image','Try a different file.');
+    img.onerror = () => onError('Could not read that image. Try a different file.');
     img.src = reader.result;
   };
-  reader.onerror = () => toast('info','Could not read that file','Try again.');
+  reader.onerror = () => onError('Could not read that file. Try again.');
   reader.readAsDataURL(file);
+}
+function handleAvatarFile(e){
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ''; /* allow re-selecting the same file later */
+  if(!file) return;
+  fileToSquareDataUrl(file, 240, setAvatar, msg => toast('info','Could not use that photo',msg));
 }
 function setAvatar(dataUrl){
   store.session.avatar = dataUrl;
