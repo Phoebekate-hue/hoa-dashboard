@@ -1266,7 +1266,8 @@ const ADMIN = {
 
   /* ---------- CALENDAR ---------- */
   calendar(){
-    return head('Calendar','Community events and every facility booking at a glance — tap a date to see what is on and what is still free.') +
+    return head('Calendar','Community events and every facility booking at a glance — tap a date to see what is on and what is still free.',
+      '<button class="btn btn-primary" style="width:auto" onclick="adminBookForm()">Book for a member</button>') +
       calendarCard();
   },
 
@@ -1541,7 +1542,8 @@ function bookingTable(list, actions){
   return '<div class="tablewrap"><table><thead><tr><th>Facility</th><th>When</th><th class="hide-sm">Requested by</th><th>Status</th>'+(actions?'<th></th>':'')+'</tr></thead><tbody>' +
     list.map(b => '<tr><td><strong>'+esc(b.facility)+'</strong><div class="meta">'+esc(b.purpose)+'</div></td>' +
       '<td>'+fmtDate(b.date)+'<div class="meta">'+esc(b.slot)+'</div></td>' +
-      '<td class="hide-sm">'+esc(b.by)+'<div class="meta mono">'+esc(b.unit)+'</div></td>' +
+      '<td class="hide-sm">'+esc(b.by)+'<div class="meta mono">'+esc(b.unit)+'</div>'+
+        (b.bookedByStaff?'<div class="meta">Added by '+esc(b.bookedByStaff)+'</div>':'')+'</td>' +
       '<td><span class="tag '+statusTag(b.status)+'">'+esc(b.status)+'</span></td>' +
       (actions ? '<td style="text-align:right">'+(b.status==='Pending'
         ? '<div class="btn-row" style="justify-content:flex-end"><button class="btn btn-emerald btn-sm" onclick="setBooking(\''+b.id+'\',\'Approved\')">Approve</button>' +
@@ -2350,7 +2352,7 @@ function dayItems(dateStr){
     .map(e=>({ kind:'event', label:e.title, sub:e.time+' · '+e.where, note:e.note }));
   const bks = store.bookings.filter(b=>b.date===dateStr && b.status!=='Declined')
     .map(b=>({ kind:b.status==='Approved'?'booked':'pending', label:b.facility, sub:b.slot,
-               note:(b.unit===myUnit()?'Your booking':'Reserved by another household')+' · '+b.purpose,
+               note:(b.unit===myUnit()?'Your booking':isStaffSide()?b.by+' · Unit '+b.unit:'Reserved by another household')+' · '+b.purpose,
                mine:b.unit===myUnit() }));
   return evs.concat(bks);
 }
@@ -2423,7 +2425,9 @@ function dayDetail(dateStr){
       : '<span class="meta">Every facility is taken on this date.</span>') + '</div>';
   modal(fmtDate(dateStr), past ? 'This date has passed.' : 'What is on, and what is still open to book.',
     body, past ? 'Close' : 'Book this date',
-    () => { if(past) return true; closeModal(); bookForm(free[0], dateStr); return true; });
+    () => { if(past) return true;
+      store.session.role==='admin' ? adminBookForm(free[0], dateStr) : bookForm(free[0], dateStr);
+      return false; /* the booking form opened its own modal — don't let this one close it again */ });
 }
 
 /* ============================================================
@@ -2523,6 +2527,7 @@ function saveBilling(){
 }
 
 /* bookings */
+const BOOK_SLOTS = ['6:00 AM – 9:00 AM','9:00 AM – 12:00 PM','1:00 PM – 5:00 PM','2:00 PM – 8:00 PM','6:00 PM – 10:00 PM'];
 function bookForm(preset, presetDate){
   const dflt = presetDate || new Date(Date.now()+864e5*7).toISOString().slice(0,10);
   modal('Book a facility','The board reviews reservations, usually within a day.',
@@ -2530,7 +2535,7 @@ function bookForm(preset, presetDate){
     '<div class="grid g-2" style="gap:0 12px">' +
       '<label class="fld"><span>Date</span><input class="input" id="f_date" type="date" value="'+dflt+'"></label>' +
       '<label class="fld"><span>Time slot</span><select class="input" id="f_slot">' +
-        ['6:00 AM – 9:00 AM','9:00 AM – 12:00 PM','1:00 PM – 5:00 PM','2:00 PM – 8:00 PM','6:00 PM – 10:00 PM'].map(s=>'<option>'+s+'</option>').join('') + '</select></label></div>' +
+        BOOK_SLOTS.map(s=>'<option>'+s+'</option>').join('') + '</select></label></div>' +
     '<label class="fld"><span>What is it for</span><input class="input" id="f_purpose" placeholder="Birthday lunch, practice, meeting…"></label>',
     'Send booking request', () => {
       const purpose=$('#f_purpose').value.trim()||'Private use', fac=$('#f_fac').value, date=$('#f_date').value, slot=$('#f_slot').value;
@@ -2544,6 +2549,39 @@ function bookForm(preset, presetDate){
         date, slot, purpose, status: auto?'Approved':'Pending' });
       commit(fac+(auto?' confirmed for unit ':' requested by unit ')+myUnit()+' on '+fmtDate(date)+'.',
         {title:auto?'Booking confirmed':'Booking sent', go:gotoBookings});
+      return true; });
+}
+/* admin: book on behalf of a member who walked in / isn't using the portal yet */
+function adminBookForm(preset, presetDate){
+  const dflt = presetDate || new Date(Date.now()+864e5*7).toISOString().slice(0,10);
+  modal('Book a facility for a member','For a walk-in, or anyone not yet using the portal — this is added on their behalf.',
+    '<label class="fld"><span>Quick-fill from the unit registry (optional)</span><select class="input" id="f_unitpick" onchange="const u=store.units.find(x=>x.unit===this.value); if(u){ $(\'#f_member\').value=u.owner; $(\'#f_unit\').value=u.unit; }">' +
+      '<option value="">— type it in below —</option>' +
+      store.units.map(u=>'<option value="'+esc(u.unit)+'">'+esc(u.owner)+' · '+esc(u.unit)+'</option>').join('') +
+    '</select></label>' +
+    '<div class="grid g-2" style="gap:0 12px">' +
+      '<label class="fld"><span>Member name</span><input class="input" id="f_member" placeholder="Full name"></label>' +
+      '<label class="fld"><span>Unit</span><input class="input" id="f_unit" placeholder="A-11"></label></div>' +
+    '<label class="fld"><span>Facility</span><select class="input" id="f_fac">'+store.settings.facilities.map(f=>'<option '+(f===preset?'selected':'')+'>'+esc(f)+'</option>').join('')+'</select></label>' +
+    '<div class="grid g-2" style="gap:0 12px">' +
+      '<label class="fld"><span>Date</span><input class="input" id="f_date" type="date" value="'+dflt+'"></label>' +
+      '<label class="fld"><span>Time slot</span><select class="input" id="f_slot">' +
+        BOOK_SLOTS.map(s=>'<option>'+s+'</option>').join('') + '</select></label></div>' +
+    '<label class="fld"><span>What is it for</span><input class="input" id="f_purpose" placeholder="Birthday lunch, practice, meeting…"></label>' +
+    '<label class="fld"><span>Status</span><select class="input" id="f_status"><option>Approved</option><option>Pending</option></select></label>',
+    'Add booking', () => {
+      const name=$('#f_member').value.trim();
+      if(!name){ toast('info','Add a name','Who is this booking for?'); return false; }
+      const unit=$('#f_unit').value.trim()||'—', fac=$('#f_fac').value, date=$('#f_date').value, slot=$('#f_slot').value;
+      const clash = store.bookings.find(b => b.facility===fac && b.date===date && b.slot===slot && b.status!=='Declined');
+      if(clash){
+        toast('info','That slot is taken', fac+' is already reserved on '+fmtDate(date)+' for '+slot+'. Pick another slot or date.');
+        return false;
+      }
+      store.bookings.unshift({ id:uid(), unit, by:name, facility:fac, date, slot,
+        purpose:$('#f_purpose').value.trim()||'Private use', status:$('#f_status').value, bookedByStaff:store.session.name });
+      commit(fac+' booked for '+name+' ('+unit+') on '+fmtDate(date)+' — added by '+store.session.name+'.',
+        {title:'Booking added', go:gotoBookings});
       return true; });
 }
 function gotoBookings(){ isStaffSide() ? (go('operations'), goTab('ops','bookings')) : go('book'); }
