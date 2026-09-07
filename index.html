@@ -959,12 +959,13 @@ const NAV = {
           store.concerns.filter(c=>c.status!=='Closed').length + store.complaints.filter(c=>c.status!=='Resolved').length +
           store.requests.filter(r=>r.status!=='Resolved').length + store.tickets.filter(t=>t.status!=='Resolved').length },
       { id:'homeowners', label:'Homeowners',              icon:'users', badge:()=>store.accounts.filter(a=>a.status==='Invited').length },
-      { id:'property',   label:'Property & Financials',   icon:'building' },
+      { id:'property',   label:'Property',                icon:'building' },
       { id:'operations', label:'Operations & Maintenance',icon:'wrench', badge:()=>store.requests.filter(r=>r.status!=='Resolved').length },
       { id:'calendar',   label:'Calendar',                icon:'calendar' },
       { id:'security',   label:'Security & Access',       icon:'shield', badge:()=>store.passes.filter(p=>p.status==='Pending').length },
       { id:'governance', label:'Governance & Community',  icon:'megaphone', badge:()=>store.complaints.filter(c=>c.status!=='Resolved').length },
-      { id:'collections',label:'Collections',             icon:'peso', badge:()=>store.dues.filter(d=>d.status!=='Paid').length },
+      { id:'financial',  label:'Financial',               icon:'peso', badge:()=>
+          store.dues.filter(d=>d.status!=='Paid').length + store.expenses.filter(x=>x.status==='For approval').length },
       { id:'reports',    label:'Reports',                 icon:'chart' }
     ]},
     { g:'Account', items:[
@@ -1135,15 +1136,15 @@ const ADMIN = {
     '<div class="grid g-2">' +
       sectionCard('Needs your attention',
         '<ul class="list">' +
-        [ pendingBk ? { t:pendingBk+' facility booking'+(pendingBk>1?'s':'')+' awaiting approval', v:'operations', s:'Pending' } : null,
+        [ pendingBk ? { t:pendingBk+' facility booking'+(pendingBk>1?'s':'')+' awaiting approval', v:'operations', tab:'bookings', s:'Pending' } : null,
           store.passes.filter(p=>p.status==='Pending').length ? { t:store.passes.filter(p=>p.status==='Pending').length+' visitor pass request(s)', v:'security', s:'Pending' } : null,
-          store.expenses.filter(x=>x.status==='For approval').length ? { t:'Meralco billing waiting for sign-off', v:'property', s:'For approval' } : null,
-          store.dues.filter(d=>d.status==='Overdue').length ? { t:store.dues.filter(d=>d.status==='Overdue').length+' household(s) past due', v:'collections', s:'Overdue' } : null,
+          store.expenses.filter(x=>x.status==='For approval').length ? { t:'Meralco billing waiting for sign-off', v:'financial', tab:'disbursement', s:'For approval' } : null,
+          store.dues.filter(d=>d.status==='Overdue').length ? { t:store.dues.filter(d=>d.status==='Overdue').length+' household(s) past due', v:'financial', tab:'collections', s:'Overdue' } : null,
           openCmp ? { t:openCmp+' complaint(s) under review', v:'governance', s:'Under review' } : null
         ].filter(Boolean).map(x =>
           '<li><div class="row" style="align-items:center"><div class="grow"><div class="ttl">'+esc(x.t)+'</div></div>' +
           '<span class="tag '+statusTag(x.s)+'">'+esc(x.s)+'</span>' +
-          '<button class="btn btn-ghost btn-sm" onclick="go(\''+x.v+'\')">Open</button></div></li>').join('') +
+          '<button class="btn btn-ghost btn-sm" onclick="go(\''+x.v+'\')'+(x.tab?';goTab(\''+({operations:'ops',financial:'fin'}[x.v])+'\',\''+x.tab+'\')':'')+'">Open</button></div></li>').join('') +
         '</ul>') +
       sectionCard('Collection rate, last six months',
         '<div class="card-pad"><div class="bars">' + store.collectionsHistory.map((h,i) =>
@@ -1253,26 +1254,6 @@ const ADMIN = {
           '</tbody></table></div>',
           '<button class="btn btn-ghost btn-sm" onclick="unitForm()">Add unit</button>');
       },
-      finances(){
-        const net = store.ledger.opening + collected() - totalExpense();
-        return '<div class="grid g-4" style="margin-bottom:14px">' +
-          stat('Opening balance', peso(store.ledger.opening), 'As of August 1') +
-          stat('Income to date', peso(collected()), 'August dues received') +
-          stat('Expenses paid', peso(totalExpense()), store.expenses.filter(x=>x.status==='Paid').length+' disbursements') +
-          stat('Working balance', peso(net), 'Reserve fund: '+peso(store.ledger.reserve)) +
-        '</div>' +
-        sectionCard('Disbursements',
-          '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Payee</th><th class="hide-sm">Category</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>' +
-          store.expenses.map(x => '<tr><td class="meta">'+fmtDate(x.date)+'</td>' +
-            '<td><strong>'+esc(x.payee)+'</strong><div class="meta">'+esc(x.memo)+'</div></td>' +
-            '<td class="hide-sm">'+esc(x.category)+'</td><td class="mono">'+peso(x.amount)+'</td>' +
-            '<td><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></td>' +
-            '<td style="text-align:right">'+(x.status==='For approval'
-              ? '<button class="btn btn-emerald btn-sm" onclick="approveExpense(\''+x.id+'\')">Approve</button>'
-              : '<span class="meta">Cleared</span>')+'</td></tr>').join('') +
-          '</tbody></table></div>',
-          '<button class="btn btn-ghost btn-sm" onclick="expenseForm()">Record expense</button>');
-      },
       budget(){
         return sectionCard('Budget against actual, 2026',
           '<div class="card-pad">' + store.budget.map(b => {
@@ -1284,8 +1265,8 @@ const ADMIN = {
           }).join('') + '</div>');
       }
     }[t]();
-    return head('Property & Financials','The unit registry, the association ledger and how the year is tracking against budget.') +
-      tabs('prop',[{id:'units',label:'Unit registry'},{id:'finances',label:'Ledger'},{id:'budget',label:'Budget'}],'units') + inner;
+    return head('Property','The unit registry and how the year is tracking against budget. Billing, collections and disbursements have moved to Financial.') +
+      tabs('prop',[{id:'units',label:'Unit registry'},{id:'budget',label:'Budget'}],'units') + inner;
   },
 
   /* ---------- OPERATIONS ---------- */
@@ -1477,9 +1458,10 @@ const ADMIN = {
         {id:'rules',label:'House rules'}],'announcements') + inner;
   },
 
-  /* ---------- COLLECTIONS ---------- */
-  collections(){
-    const t = tabOf('col','ledger');
+  /* ---------- FINANCIAL ---------- */
+  financial(){
+    const t = tabOf('fin','billing');
+    const net = store.ledger.opening + collected() - totalExpense();
     const aging = [
       { b:'Current', n:store.dues.filter(d=>d.status==='Paid').length, tone:'t-emerald' },
       { b:'1–30 days', n:store.dues.filter(d=>d.status==='Unpaid').length, tone:'t-amber' },
@@ -1487,32 +1469,7 @@ const ADMIN = {
       { b:'60+ days', n:0, tone:'t-grey' }
     ];
     const inner = {
-      ledger(){
-        return sectionCard('Dues ledger',
-          '<div class="tablewrap"><table><thead><tr><th>Household</th><th class="hide-sm">Period</th><th>Amount</th><th class="hide-sm">Method</th><th>Status</th><th></th></tr></thead><tbody>' +
-          store.dues.map(d => '<tr><td><strong>'+esc(d.owner)+'</strong><div class="meta mono">'+esc(d.unit)+'</div></td>' +
-            '<td class="hide-sm">'+esc(d.period)+'</td><td class="mono">'+peso(d.amount)+'</td>' +
-            '<td class="hide-sm">'+esc(d.method||'—')+'</td><td><span class="tag '+statusTag(d.status)+'">'+esc(d.status)+'</span></td>' +
-            '<td style="text-align:right">'+(d.status==='Paid'
-              ? '<span class="meta">'+fmtDate(d.paidAt)+'</span>'
-              : '<div class="btn-row" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="markPaid(\''+d.id+'\',\'Office cash\')">Record payment</button>' +
-                '<button class="btn btn-ghost btn-sm" onclick="remind(\''+d.id+'\')">Send reminder</button></div>')+'</td></tr>').join('') +
-          '</tbody></table></div>',
-          '<button class="btn btn-ghost btn-sm" onclick="billingRun()">Generate next billing</button>');
-      },
-      aging(){
-        return '<div class="grid g-4" style="margin-bottom:14px">' + aging.map(a =>
-          stat(a.b, a.n, a.n===1?'household':'households')).join('') + '</div>' +
-          sectionCard('Accounts past due', '<ul class="list">' +
-            (store.dues.filter(d=>d.status!=='Paid').length
-              ? store.dues.filter(d=>d.status!=='Paid').map(d =>
-                '<li><div class="row" style="align-items:center"><div class="grow"><div class="ttl">'+esc(d.owner)+'</div>' +
-                '<div class="meta"><span class="mono">'+esc(d.unit)+'</span>·<span>'+esc(d.period)+'</span>·<span>'+peso(d.amount)+'</span></div></div>' +
-                '<span class="tag '+statusTag(d.status)+'">'+esc(d.status)+'</span>' +
-                '<button class="btn btn-ghost btn-sm" onclick="remind(\''+d.id+'\')">Remind</button></div></li>').join('')
-              : '<li>'+empty('Nothing past due','Every household is current for this period.')+'</li>') + '</ul>');
-      },
-      settings(){
+      billing(){
         const s = store.settings;
         return sectionCard('Billing rules',
           '<div class="card-pad">' +
@@ -1522,11 +1479,61 @@ const ADMIN = {
             '<label class="fld"><span>Late fee (%)</span><input class="input" id="cs_fee" type="number" value="'+s.lateFeePct+'"></label>' +
           '</div>' +
           '<button class="btn btn-primary" style="width:auto" onclick="saveBilling()">Save billing rules</button>' +
-          '<p class="meta" style="margin-top:10px">Changes show up in the homeowner portal immediately.</p></div>');
+          '<p class="meta" style="margin-top:10px">Changes show up in the homeowner portal immediately.</p></div>',
+          '<button class="btn btn-ghost btn-sm" onclick="billingRun()">Generate next billing</button>') +
+        sectionCard('Recently generated', store.reportLog.filter(r=>r.key==='collect').length ? '<ul class="list">' +
+          store.reportLog.filter(r=>r.key==='collect').map(r =>
+          '<li><div class="row" style="align-items:center"><div class="grow"><div class="ttl">'+esc(r.title)+'</div>' +
+          '<div class="meta mono">'+esc(r.file)+' · '+clock(r.at)+'</div></div></div></li>').join('') + '</ul>'
+          : empty('No billing run yet','Generate the next billing to bill every household for the period.'));
+      },
+      collections(){
+        return sectionCard('Dues ledger',
+          '<div class="tablewrap"><table><thead><tr><th>Household</th><th class="hide-sm">Period</th><th>Amount</th><th class="hide-sm">Method</th><th>Status</th><th></th></tr></thead><tbody>' +
+          store.dues.map(d => '<tr><td><strong>'+esc(d.owner)+'</strong><div class="meta mono">'+esc(d.unit)+'</div></td>' +
+            '<td class="hide-sm">'+esc(d.period)+'</td><td class="mono">'+peso(d.amount)+'</td>' +
+            '<td class="hide-sm">'+esc(d.method||'—')+'</td><td><span class="tag '+statusTag(d.status)+'">'+esc(d.status)+'</span></td>' +
+            '<td style="text-align:right">'+(d.status==='Paid'
+              ? '<span class="meta">'+fmtDate(d.paidAt)+'</span>'
+              : '<div class="btn-row" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="markPaid(\''+d.id+'\',\'Office cash\')">Record payment</button>' +
+                '<button class="btn btn-ghost btn-sm" onclick="remind(\''+d.id+'\')">Send reminder</button></div>')+'</td></tr>').join('') +
+          '</tbody></table></div>') +
+        '<div class="grid g-4" style="margin:14px 0">' + aging.map(a =>
+          stat(a.b, a.n, a.n===1?'household':'households')).join('') + '</div>' +
+        sectionCard('Accounts past due', '<ul class="list">' +
+          (store.dues.filter(d=>d.status!=='Paid').length
+            ? store.dues.filter(d=>d.status!=='Paid').map(d =>
+              '<li><div class="row" style="align-items:center"><div class="grow"><div class="ttl">'+esc(d.owner)+'</div>' +
+              '<div class="meta"><span class="mono">'+esc(d.unit)+'</span>·<span>'+esc(d.period)+'</span>·<span>'+peso(d.amount)+'</span></div></div>' +
+              '<span class="tag '+statusTag(d.status)+'">'+esc(d.status)+'</span>' +
+              '<button class="btn btn-ghost btn-sm" onclick="remind(\''+d.id+'\')">Remind</button></div></li>').join('')
+            : '<li>'+empty('Nothing past due','Every household is current for this period.')+'</li>') + '</ul>');
+      },
+      disbursement(){
+        return sectionCard('Disbursements',
+          '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Payee</th><th class="hide-sm">Category</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>' +
+          store.expenses.map(x => '<tr><td class="meta">'+fmtDate(x.date)+'</td>' +
+            '<td><strong>'+esc(x.payee)+'</strong><div class="meta">'+esc(x.memo)+'</div></td>' +
+            '<td class="hide-sm">'+esc(x.category)+'</td><td class="mono">'+peso(x.amount)+'</td>' +
+            '<td><span class="tag '+statusTag(x.status)+'">'+esc(x.status)+'</span></td>' +
+            '<td style="text-align:right">'+(x.status==='For approval'
+              ? '<button class="btn btn-emerald btn-sm" onclick="approveExpense(\''+x.id+'\')">Approve</button>'
+              : '<span class="meta">Cleared</span>')+'</td></tr>').join('') +
+          '</tbody></table></div>',
+          '<button class="btn btn-ghost btn-sm" onclick="expenseForm()">Record expense</button>');
       }
     }[t]();
-    return head('Collections','Who has paid, who has not, and the rules that generate the bill.') +
-      tabs('col',[{id:'ledger',label:'Ledger'},{id:'aging',label:'Aging'},{id:'settings',label:'Billing rules'}],'ledger') + inner;
+    return head('Financial','Billing, collections and disbursements — the association’s money in one place.') +
+    '<div class="grid g-4" style="margin-bottom:14px">' +
+      stat('Opening balance', peso(store.ledger.opening), 'As of August 1') +
+      stat('Collected to date', peso(collected()), collectionPct()+'% of August billing') +
+      stat('Disbursed', peso(totalExpense()), store.expenses.filter(x=>x.status==='Paid').length+' payments released') +
+      stat('Working balance', peso(net), 'Reserve fund: '+peso(store.ledger.reserve)) +
+    '</div>' +
+      tabs('fin',[
+        {id:'billing',label:'Billing'},
+        {id:'collections',label:'Collections',n:store.dues.filter(d=>d.status!=='Paid').length},
+        {id:'disbursement',label:'Disbursement',n:store.expenses.filter(x=>x.status==='For approval').length}],'billing') + inner;
   },
 
   /* ---------- REPORTS ---------- */
